@@ -1,0 +1,30 @@
+# python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# tool caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# build output
+build/
+dist/
+*.so
+
+# coverage output
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+
+# secrets and local config
+.env
+.env.*
+
+# market snapshots, positions and account data: never committed (Tiers 6 and 7)
+data/
+.cache/
