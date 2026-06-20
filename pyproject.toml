@@ -1,0 +1,84 @@
+[build-system]
+# hatchling is a pure-python backend. Tier 4 swaps this block for scikit-build-core, which
+# builds the C++ extension from this same file
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "options-pricing-engine"
+dynamic = ["version"]
+description = "Options pricing library: Black-Scholes, Monte Carlo, trees and PDEs, C++ core, calibration, portfolio risk"
+readme = "README.md"
+requires-python = ">=3.12"
+authors = [{ name = "Jad Bghiel" }]
+dependencies = [
+    "numpy>=1.26",
+    "scipy>=1.11",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    "pytest-cov>=5",
+    "ruff>=0.6",
+    "mypy>=1.11",
+    "scipy-stubs",  # scipy ships no type hints, mypy strict needs them
+    "nbmake",  # runs the notebooks as tests in ci
+    "ipykernel",  # the kernel vs code and nbmake run them with
+]
+plots = [
+    "matplotlib>=3.8",
+]
+
+[project.scripts]
+ope = "ope.cli:main"
+
+[tool.hatch.version]
+# one source of truth for the version: the __version__ string in the package
+path = "src/ope/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ope"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # import order
+    "N",   # pep8-naming
+    "UP",  # pyupgrade
+    "B",   # bugbear
+    "SIM", # simplifications
+    "C4",  # comprehensions
+    "NPY", # numpy deprecations
+    "RUF", # ruff-specific
+]
+ignore = [
+    # S, K, T, N(x) are the standard notation in every pricing text, so we keep them
+    "N803", # argument name should be lowercase
+    "N806", # variable in function should be lowercase
+    "N815", # mixedCase in class scope (sqrt_T)
+    "N816", # mixedCase in global scope (notebooks: hS, hT)
+]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+files = ["src/ope"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--strict-markers --cov=ope --cov-report=term-missing --cov-report=xml"
+
+[tool.coverage.run]
+branch = true
+source = ["ope"]
+
+[tool.coverage.report]
+fail_under = 95
