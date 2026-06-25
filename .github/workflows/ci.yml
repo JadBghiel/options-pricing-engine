@@ -34,6 +34,10 @@ jobs:
       - name: Tests
         run: uv run pytest
 
+      - name: Notebooks
+        # runs every notebook top to bottom, so a notebook that breaks after an api change fails ci
+        run: uv run pytest --nbmake notebooks --no-cov
+
       - name: Upload coverage
         uses: codecov/codecov-action@v7
         with:
