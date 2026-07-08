@@ -3,6 +3,8 @@
 ope price -S 42 -K 40 -T 0.5 -r 0.1 --sigma 0.2
 ope iv --type put -S 42 -K 40 -T 0.5 -r 0.1 --price 0.81
 ope plot-greeks -K 100 -T 0.5 -r 0.05 --sigma 0.2 --out greeks.png
+ope mc -S 42 -K 40 -T 0.5 -r 0.1 --sigma 0.2 --paths 100000 --antithetic --control
+ope plot-mc -S 42 -K 40 -T 0.5 -r 0.1 --sigma 0.2 --out convergence.png
 """
 
 import argparse
@@ -11,6 +13,7 @@ from collections.abc import Callable, Sequence
 
 from ope.black_scholes import greeks, price
 from ope.implied_volatility import implied_vol_result
+from ope.monte_carlo import mc_price
 
 
 def _add_option_args(p: argparse.ArgumentParser, *, spot: bool = True) -> None:
@@ -39,6 +42,20 @@ def build_parser() -> argparse.ArgumentParser:
     _add_option_args(p, spot=False)
     p.add_argument("--sigma", type=float, required=True, help="volatility, 0.2 = 20%%")
     p.add_argument("--out", default="greeks_vs_spot.png")
+
+    p = sub.add_parser("mc", help="Monte Carlo price with a 95% confidence interval")
+    _add_option_args(p)
+    p.add_argument("--sigma", type=float, required=True, help="volatility, 0.2 = 20%%")
+    p.add_argument("--paths", type=int, default=100_000)
+    p.add_argument("--seed", type=int, default=0, help="same seed, same result")
+    p.add_argument("--antithetic", action="store_true", help="pair each draw z with -z")
+    p.add_argument("--control", action="store_true", help="control variate on the stock")
+
+    p = sub.add_parser("plot-mc", help="plot Monte Carlo convergence vs paths to a PNG")
+    _add_option_args(p)
+    p.add_argument("--sigma", type=float, required=True, help="volatility, 0.2 = 20%%")
+    p.add_argument("--seed", type=int, default=0)
+    p.add_argument("--out", default="mc_convergence.png")
     return parser
 
 
@@ -69,17 +86,53 @@ def _cmd_iv(a: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_mc(a: argparse.Namespace) -> int:
+    args = (a.spot, a.strike, a.maturity, a.rate, a.sigma, a.div_yield)
+    res = mc_price(
+        a.option,
+        *args,
+        n_paths=a.paths,
+        antithetic=a.antithetic,
+        control_variate=a.control,
+        rng=a.seed,
+    )
+    exact = float(price(a.option, *args))
+    lo, hi = res.ci95
+    where = "inside" if lo <= exact <= hi else "outside"
+    print(f"monte carlo  {res.estimate:.6f}  (std error {res.std_error:.6f}, {res.n_paths} paths)")
+    print(f"95% CI       [{lo:.6f}, {hi:.6f}]")
+    print(f"closed form  {exact:.6f}  ({where} the interval)")
+    return 0
+
+
+def _plots_missing() -> int:
+    print(
+        "error: plotting needs matplotlib, install it with "
+        "pip install 'options-pricing-engine[plots]'",
+        file=sys.stderr,
+    )
+    return 1
+
+
 def _cmd_plot_greeks(a: argparse.Namespace) -> int:
     try:
         from ope.plots import plot_greeks_vs_spot
     except ImportError:
-        print(
-            "error: plotting needs matplotlib, install it with "
-            "pip install 'options-pricing-engine[plots]'",
-            file=sys.stderr,
-        )
-        return 1
+        return _plots_missing()
     fig = plot_greeks_vs_spot(a.strike, a.maturity, a.rate, a.sigma, a.div_yield)
+    fig.savefig(a.out, dpi=120)
+    print(f"saved {a.out}")
+    return 0
+
+
+def _cmd_plot_mc(a: argparse.Namespace) -> int:
+    try:
+        from ope.plots import plot_mc_convergence
+    except ImportError:
+        return _plots_missing()
+    fig = plot_mc_convergence(
+        a.option, a.spot, a.strike, a.maturity, a.rate, a.sigma, a.div_yield, seed=a.seed
+    )
     fig.savefig(a.out, dpi=120)
     print(f"saved {a.out}")
     return 0
@@ -89,6 +142,8 @@ _COMMANDS: dict[str, Callable[[argparse.Namespace], int]] = {
     "price": _cmd_price,
     "iv": _cmd_iv,
     "plot-greeks": _cmd_plot_greeks,
+    "mc": _cmd_mc,
+    "plot-mc": _cmd_plot_mc,
 }
 
 

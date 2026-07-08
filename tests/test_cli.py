@@ -37,6 +37,32 @@ def test_plot_greeks_writes_a_png(tmp_path: Path) -> None:
     assert out.stat().st_size > 10_000
 
 
+def test_mc_prints_the_interval_and_the_closed_form(capsys: pytest.CaptureFixture[str]) -> None:
+    argv = ["mc", "-S", "42", "-K", "40", "-T", "0.5", "-r", "0.1", "--sigma", "0.2"]
+    code = main([*argv, "--paths", "20000", "--antithetic", "--control"])
+    out = capsys.readouterr().out
+    assert code == 0
+    assert "95% CI" in out
+    assert "4.759422" in out
+
+
+def test_plot_mc_writes_a_png(tmp_path: Path) -> None:
+    pytest.importorskip("matplotlib")
+    out = tmp_path / "mc.png"
+    argv = ["plot-mc", "-S", "42", "-K", "40", "-T", "0.5", "-r", "0.1", "--sigma", "0.2"]
+    assert main([*argv, "--out", str(out)]) == 0
+    assert out.stat().st_size > 10_000
+
+
+def test_plot_mc_without_matplotlib(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setitem(sys.modules, "ope.plots", None)
+    argv = ["plot-mc", "-S", "42", "-K", "40", "-T", "0.5", "-r", "0.1", "--sigma", "0.2"]
+    assert main(argv) == 1
+    assert "matplotlib" in capsys.readouterr().err
+
+
 def test_plot_greeks_without_matplotlib(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
