@@ -12,8 +12,9 @@ slower method that is already trusted).
 
 I documented my full learning process in Notion, reach out privately if you wish to consult it.
 
-> **Status:** Tier 0 (engineering setup) and Tier 1 (Black-Scholes, Greeks, implied vol) are built
-> and validated locally: 45 tests, 99% branch coverage. **Tier 2 (Monte Carlo) is next.**
+> **Status:** Tier 0 (engineering setup), Tier 1 (Black-Scholes, Greeks, implied vol) and Tier 2
+> (Monte Carlo with variance reduction and Monte Carlo Greeks) are built and validated locally:
+> 80 tests, 99% branch coverage. **Tier 3 (American options) is next.**
 
 ---
 
@@ -74,7 +75,7 @@ The engine doesn't places or modifies orders. The IBKR gateaway code is read onl
 |---|---|
 | 0 | A fresh clone installs and passes CI (lint, types, tests) |
 | 1 | Hull's example (S=42, K=40, r=10%, σ=20%, T=0.5): call ≈ 4.76, put ≈ 0.81. Greeks vs. finite differences to 1e-4. Implied vol round-trip to 1e-6. Put-call parity |
-| 2 | The Tier 1 price inside the 95% confidence interval. Standard-error reduction from variance reduction at equal N. Monte Carlo deltas vs. the analytical delta within their standard error |
+| 2 | The Tier 1 price inside the 95% confidence interval about 95% of the time (checked over 200 seeds per method). Reported standard errors match the real spread across seeds. Variance reduction cuts the standard error 2x to 12x at equal N. Monte Carlo deltas (three ways) vs. the analytical delta within their standard error |
 | 3 | Tree and PDE converge to Tier 1 on European payoffs. American puts from tree and PDE agree to a stated tolerance. American call on a non-dividend stock equals the European call |
 | 4 | The Python implementation, to floating-point tolerance, on identical inputs. Clean ASan and UBSan builds |
 | 5 | The geometric Asian closed form. Heston converging to Black-Scholes as vol-of-vol goes to zero |
@@ -150,6 +151,45 @@ rho per 1.00 (divide by 100 for one point), theta per year (divide by 365 for on
 
 Implied vol uses a safeguarded Newton (Newton steps inside a bracket, bisection when a step would
 leave it). Near the money it needs 3 to 6 iterations where bisection needs about 40.
+
+### Tier 2: Monte Carlo
+
+```python
+from ope import mc_delta, mc_price
+
+res = mc_price("call", 42, 40, 0.5, 0.10, 0.20, n_paths=100_000, rng=0)
+res.estimate, res.std_error, res.ci95  # price, its standard error, 95% interval
+
+# variance reduction: antithetic pairs (z, -z) and a control variate on the stock
+mc_price("call", 42, 40, 0.5, 0.10, 0.20, antithetic=True, control_variate=True, rng=0)
+
+# delta three ways: "bump" (common random numbers), "pathwise", "likelihood_ratio"
+mc_delta("call", 42, 40, 0.5, 0.10, 0.20, method="pathwise", rng=0)
+```
+
+```bash
+uv run ope mc -S 42 -K 40 -T 0.5 -r 0.1 --sigma 0.2 --antithetic --control
+uv run ope plot-mc -S 42 -K 40 -T 0.5 -r 0.1 --sigma 0.2 --out convergence.png
+```
+
+**Walkthrough:** [notebooks/tier2_monte_carlo.ipynb](notebooks/tier2_monte_carlo.ipynb): one
+simulated future step by step, 100 confidence intervals drawn, both variance-reduction tricks,
+the three deltas, and Sobol points vs. pseudo-random numbers.
+
+![Monte Carlo convergence: estimate and 95% interval vs. paths, and the standard error falling like 1/sqrt(N)](docs/img/tier2_mc_convergence.png)
+
+Variance reduction on Hull's call (S=42, K=40, T=0.5, r=10%, σ=20%), 200,000 paths, same seed:
+
+| Method | Standard error | Cut vs. plain | Equivalent extra paths |
+|---|---|---|---|
+| Plain | 0.0111 | 1x | 1x |
+| Antithetic | 0.0055 | 2.0x | 4x |
+| Control variate (discounted stock) | 0.0031 | 3.6x | 13x |
+| Both | 0.0009 | 12.3x | 150x |
+
+Monte Carlo delta, same option, 200,000 paths: bump-and-revalue with common random numbers and
+pathwise both give a standard error of 0.0011; likelihood ratio gives 0.0037, about 3.5 times
+noisier, because it weights whole payoffs by a random score instead of differentiating them.
 
 ---
 

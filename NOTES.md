@@ -49,3 +49,44 @@ N is the standard normal CDF and n its density.
 - Gamma and vega match for calls and puts because parity is linear in S and has no σ.
 - Newton is fast near the money (3 to 6 iterations against about 40 for bisection) but stalls
   where vega vanishes, so it needs a bracket and a bisection fallback.
+
+## Tier 2: Monte Carlo
+
+### Key formulas
+
+$$S_T = S\,e^{(r - q - \sigma^2/2)T + \sigma\sqrt{T}\,Z}, \qquad Z \sim N(0, 1)$$
+
+The stock price at expiry, simulated exactly in one step. The −σ²/2 makes the average S_T equal
+the forward S·e^((r−q)T).
+
+$$\hat{C} = \frac{1}{N}\sum_{i=1}^{N} e^{-rT}\,\text{payoff}(S_T^{(i)}), \qquad \text{SE} = \frac{s}{\sqrt{N}}, \qquad \text{CI}_{95\%} = \hat{C} \pm 1.96\,\text{SE}$$
+
+N paths, s the sample standard deviation of the discounted payoffs.
+
+- **Antithetic:** use Z and −Z; the standard error comes from the N/2 pair averages.
+- **Control variate:** $\hat{C}_{cv} = \bar{X} - \beta(\bar{Y} - S e^{-qT})$, with X the discounted
+  payoff, Y the discounted stock (known average) and β the regression slope of X on Y.
+- **Delta:** pathwise $e^{-rT}\,1_{S_T>K}\,S_T/S$ (call); likelihood ratio
+  $e^{-rT}\,\text{payoff}\cdot Z/(S\sigma\sqrt{T})$; bump $(V(S+h) - V(S-h))/2h$ on the same draws.
+
+### Gotchas
+
+- A 95% interval misses 1 run in 20 by design: judge the method on coverage over many seeds,
+  never on one run. Seed 1 happened to miss with two methods at once.
+- Antithetic pairs are not independent. Computing the standard error from the N payoffs instead
+  of the N/2 pair averages reports an error that is too small.
+- With σ = 0 every path is identical, but the computed standard error is 6e-16, not 0: averaging
+  identical numbers in floating point leaves rounding noise.
+- Estimating β from the same sample makes the control variate very slightly biased (order 1/N);
+  invisible next to the standard error at any useful N.
+
+### Takeaways
+
+- Monte Carlo prices any payoff you can simulate; its error shrinks like 1/√N, so 100 times more
+  paths buys only 10 times less error.
+- Variance reduction is free accuracy: on Hull's call, antithetic plus a control variate cut the
+  error 12 times, worth about 150 times more paths.
+- Pathwise and bump-with-common-random-numbers deltas are precise; likelihood ratio is about 3.5
+  times noisier but works even for payoffs that jump.
+- Sobol points cover the bell curve evenly and beat 1/√N, but then the usual standard error
+  formula no longer applies.

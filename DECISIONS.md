@@ -75,3 +75,34 @@ plots on GitHub).
 **Validated:** Hull's price and Greeks examples, put-call parity on 500 random sets, all Greeks
 against finite differences, implied vol round trips, bounds, monotonicity and edge cases. 45
 tests, 99% branch coverage.
+
+## T2. Monte Carlo pricer
+
+**Chosen:**
+- exact one-step simulation of the stock at expiry (`gbm_terminal`), no time stepping
+- a random generator or seed passed in explicitly to every function, so runs are reproducible
+- an `MCResult` (estimate, standard error, paths, 95% interval) for prices and deltas alike
+- antithetic variates and a control variate on the discounted stock, usable together
+- delta three ways: bump with common random numbers, pathwise, likelihood ratio
+- validation by coverage over many seeds, not by a single run
+
+**Why:**
+- **Exact simulation.** Under Black-Scholes the price at expiry has a known distribution, so one
+  draw per path has no discretization error. Time stepping only matters for path-dependent
+  payoffs (Tier 5).
+- **Explicit randomness.** A hidden global seed makes tests flaky and results irreproducible;
+  passing the generator makes every number in the docs reproducible.
+- **Coverage, not one seed.** A correct 95% interval misses 1 run in 20. Testing one seed either
+  passes by luck or fails by luck; testing 200 seeds checks the claim itself.
+- **Three deltas.** Pathwise is precise but needs a payoff with a slope; likelihood ratio works
+  for any payoff, at a cost in noise; bumping is the generic fallback. Tier 5 needs all three.
+
+**Considered and ruled out:**
+- *Time-stepped (Euler) simulation for vanillas*: adds error and cost for nothing here.
+- *NumPy's global `np.random.seed`*: shared hidden state, breaks reproducibility across calls.
+- *Sobol points in the library*: kept to the notebook for now, since they need randomized
+  replicas to give an error bar; worth adding if Tier 5 needs the speed.
+
+**Validated:** coverage 93 to 96% over 400 seeds for every method, reported standard errors
+within 15% of the real spread, variance reduction 2.0x / 3.6x / 12.3x at equal paths, every
+delta method within its standard error. 80 tests, 99% branch coverage.
