@@ -5,6 +5,8 @@ ope iv --type put -S 42 -K 40 -T 0.5 -r 0.1 --price 0.81
 ope plot-greeks -K 100 -T 0.5 -r 0.05 --sigma 0.2 --out greeks.png
 ope mc -S 42 -K 40 -T 0.5 -r 0.1 --sigma 0.2 --paths 100000 --antithetic --control
 ope plot-mc -S 42 -K 40 -T 0.5 -r 0.1 --sigma 0.2 --out convergence.png
+ope american --type put -S 50 -K 50 -T 0.4167 -r 0.1 --sigma 0.4
+ope plot-boundary -S 50 -K 50 -T 0.4167 -r 0.1 --sigma 0.4 --out boundary.png
 """
 
 import argparse
@@ -14,6 +16,8 @@ from collections.abc import Callable, Sequence
 from ope.black_scholes import greeks, price
 from ope.implied_volatility import implied_vol_result
 from ope.monte_carlo import mc_price
+from ope.pde import pde_price
+from ope.trees import crr_price
 
 
 def _add_option_args(p: argparse.ArgumentParser, *, spot: bool = True) -> None:
@@ -56,6 +60,17 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--sigma", type=float, required=True, help="volatility, 0.2 = 20%%")
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--out", default="mc_convergence.png")
+
+    p = sub.add_parser("american", help="American price by tree and PDE, vs European")
+    _add_option_args(p)
+    p.add_argument("--sigma", type=float, required=True, help="volatility, 0.2 = 20%%")
+    p.add_argument("--steps", type=int, default=2000, help="tree time steps")
+    p.add_argument("--grid", type=int, default=300, help="pde nodes and time steps")
+
+    p = sub.add_parser("plot-boundary", help="plot the early exercise boundary to a PNG")
+    _add_option_args(p)
+    p.add_argument("--sigma", type=float, required=True, help="volatility, 0.2 = 20%%")
+    p.add_argument("--out", default="exercise_boundary.png")
     return parser
 
 
@@ -138,12 +153,40 @@ def _cmd_plot_mc(a: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_american(a: argparse.Namespace) -> int:
+    args = (a.spot, a.strike, a.maturity, a.rate, a.sigma, a.div_yield)
+    tree = crr_price(a.option, *args, steps=a.steps, american=True)
+    pde = pde_price(a.option, *args, american=True, n_space=a.grid, n_time=a.grid)
+    european = float(price(a.option, *args))
+    print(
+        f"american {a.option}  tree {tree:.6f} ({a.steps} steps)  pde {pde:.6f} ({a.grid}x{a.grid})"
+    )
+    print(f"european {a.option}  {european:.6f}  (closed form)")
+    print(f"early exercise premium  {tree - european:.6f}")
+    return 0
+
+
+def _cmd_plot_boundary(a: argparse.Namespace) -> int:
+    try:
+        from ope.plots import plot_exercise_boundary
+    except ImportError:
+        return _plots_missing()
+    fig = plot_exercise_boundary(
+        a.option, a.spot, a.strike, a.maturity, a.rate, a.sigma, a.div_yield
+    )
+    fig.savefig(a.out, dpi=120)
+    print(f"saved {a.out}")
+    return 0
+
+
 _COMMANDS: dict[str, Callable[[argparse.Namespace], int]] = {
     "price": _cmd_price,
     "iv": _cmd_iv,
     "plot-greeks": _cmd_plot_greeks,
     "mc": _cmd_mc,
     "plot-mc": _cmd_plot_mc,
+    "american": _cmd_american,
+    "plot-boundary": _cmd_plot_boundary,
 }
 
 

@@ -1,4 +1,4 @@
-"""plots for the closed form model and monte carlo, needs the plots extra (matplotlib)"""
+"""plots for black scholes, monte carlo, trees and the pde, needs the plots extra (matplotlib)"""
 
 import math
 
@@ -7,6 +7,8 @@ from matplotlib.figure import Figure
 
 from ope.black_scholes import OptionType, greeks, price
 from ope.monte_carlo import mc_price
+from ope.pde import pde_solve
+from ope.trees import crr_price
 
 
 def plot_greeks_vs_spot(
@@ -113,4 +115,74 @@ def plot_mc_convergence(
     fig.suptitle(
         f"Monte Carlo convergence ({option}, S={S:g}, K={K:g}, T={T:g}, r={r:g}, sigma={sigma:g})"
     )
+    return fig
+
+
+def plot_tree_convergence(
+    option: OptionType,
+    S: float,
+    K: float,
+    T: float,
+    r: float,
+    sigma: float,
+    q: float = 0.0,
+    *,
+    max_steps: int = 200,
+) -> Figure:
+    """european crr price vs number of steps, against the closed form: the odd/even zigzag"""
+    steps = np.arange(10, max_steps + 1)
+    tree = np.array([crr_price(option, S, K, T, r, sigma, q, steps=int(n)) for n in steps])
+    exact = float(price(option, S, K, T, r, sigma, q))
+    fig = Figure(figsize=(10, 4.2), layout="constrained")
+    ax = fig.subplots()
+    odd = steps % 2 == 1
+    ax.plot(steps[~odd], tree[~odd], ".", ms=4, label="even number of steps")
+    ax.plot(steps[odd], tree[odd], ".", ms=4, label="odd number of steps")
+    ax.axhline(exact, color="gray", linestyle="--", label=f"closed form {exact:.4f}")
+    ax.set_xlabel("number of time steps n")
+    ax.set_ylabel(f"european {option} price")
+    ax.set_title("CRR tree: converges to Black-Scholes, zigzagging between odd and even n")
+    ax.grid(alpha=0.3)
+    ax.legend()
+    return fig
+
+
+def plot_exercise_boundary(
+    option: OptionType,
+    S: float,
+    K: float,
+    T: float,
+    r: float,
+    sigma: float,
+    q: float = 0.0,
+    *,
+    n_space: int = 300,
+    n_time: int = 300,
+) -> Figure:
+    """early exercise boundary of an american option over its life, from the pde solver"""
+    sol = pde_solve(option, S, K, T, r, sigma, q, american=True, n_space=n_space, n_time=n_time)
+    keep = ~np.isnan(sol.boundary)
+    fig = Figure(figsize=(10, 4.5), layout="constrained")
+    ax = fig.subplots()
+    ax.plot(sol.times[keep], sol.boundary[keep], color="crimson", label="exercise boundary S*(t)")
+    region = "below" if option == "put" else "above"
+    edge = sol.spots.min() if option == "put" else sol.spots.max()
+    ax.fill_between(
+        sol.times[keep],
+        sol.boundary[keep],
+        max(edge, 0.5 * K) if option == "put" else min(edge, 1.5 * K),
+        alpha=0.15,
+        color="crimson",
+        label=f"exercise now ({region} the line)",
+    )
+    ax.axhline(K, color="gray", linestyle="--", label=f"strike K = {K:g}")
+    ax.set_xlim(0, T)
+    ax.set_xlabel("time from today (years)")
+    ax.set_ylabel("stock price")
+    ax.set_title(
+        f"American {option}: when to exercise early "
+        f"(S={S:g}, K={K:g}, r={r:g}, sigma={sigma:g}, q={q:g})"
+    )
+    ax.grid(alpha=0.3)
+    ax.legend(loc="lower left" if option == "put" else "upper left")
     return fig
