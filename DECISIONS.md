@@ -106,3 +106,33 @@ tests, 99% branch coverage.
 **Validated:** coverage 93 to 96% over 400 seeds for every method, reported standard errors
 within 15% of the real spread, variance reduction 2.0x / 3.6x / 12.3x at equal paths, every
 delta method within its standard error. 80 tests, 99% branch coverage.
+
+## T3. American options: tree and PDE
+
+**Chosen:**
+- a Cox-Ross-Rubinstein tree, backward induction vectorized per time slice, with the backward
+  step exposed as its own function
+- a Crank-Nicolson PDE solver in log price, with the strike on a grid node, two Rannacher steps,
+  a tridiagonal solve for European options and PSOR for American ones
+- the early-exercise boundary read off the PDE grid
+- validation of American prices by agreement between the two methods (0.05%)
+
+**Why:**
+- **Two independent methods.** There is no closed form for an American put, so the best evidence
+  is two unrelated methods landing on the same number.
+- **Log price.** Constant coefficients and a grid that covers the lognormal spread evenly.
+- **Strike on a node and Rannacher steps.** Both deal with the payoff's kink: without them the
+  error converges erratically and gamma near the strike is meaningless.
+- **PSOR.** The standard way to impose V ≥ payoff on an implicit scheme, and it's what PLAN.md
+  asks for.
+
+**Considered and ruled out:**
+- *Fully implicit time stepping everywhere*: stable but only first order in time.
+- *Brennan-Schwartz* for the American step: exact and faster for a put, but it relies on the
+  exercise region being on one side, and PSOR is the general method the tier is about.
+- *Longstaff-Schwartz Monte Carlo for American options*: a different family (regression), kept for
+  later if needed.
+
+**Validated:** Hull's 5-step put 4.4885; European tree within 1e-4 and PDE within 5e-5 relative of
+Tier 1; American puts tree vs. PDE within 0.05%; American call = European call without dividends.
+112 tests, 99% branch coverage. Write-up in REPORT.md.

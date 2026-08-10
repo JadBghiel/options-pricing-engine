@@ -12,9 +12,10 @@ slower method that is already trusted).
 
 I documented my full learning process in Notion, reach out privately if you wish to consult it.
 
-> **Status:** Tier 0 (engineering setup), Tier 1 (Black-Scholes, Greeks, implied vol) and Tier 2
-> (Monte Carlo with variance reduction and Monte Carlo Greeks) are built and validated locally:
-> 80 tests, 99% branch coverage. **Tier 3 (American options) is next.**
+> **Status:** the core engine (Tiers 0 to 3) is built and validated locally: Black-Scholes with
+> Greeks and implied vol, Monte Carlo with variance reduction, and American options by binomial
+> tree and Crank-Nicolson PDE. 112 tests, 99% branch coverage. Write-up: [REPORT.md](REPORT.md).
+> **Tier 4 (C++ core) is next.**
 
 ---
 
@@ -76,7 +77,7 @@ The engine doesn't places or modifies orders. The IBKR gateaway code is read onl
 | 0 | A fresh clone installs and passes CI (lint, types, tests) |
 | 1 | Hull's example (S=42, K=40, r=10%, σ=20%, T=0.5): call ≈ 4.76, put ≈ 0.81. Greeks vs. finite differences to 1e-4. Implied vol round-trip to 1e-6. Put-call parity |
 | 2 | The Tier 1 price inside the 95% confidence interval about 95% of the time (checked over 200 seeds per method). Reported standard errors match the real spread across seeds. Variance reduction cuts the standard error 2x to 12x at equal N. Monte Carlo deltas (three ways) vs. the analytical delta within their standard error |
-| 3 | Tree and PDE converge to Tier 1 on European payoffs. American puts from tree and PDE agree to a stated tolerance. American call on a non-dividend stock equals the European call |
+| 3 | Tree and PDE converge to Tier 1 on European payoffs (1e-4 and second order). American puts from tree and PDE agree to 0.05% of the price. American call on a non-dividend stock equals the European call exactly; with an 8% dividend yield early exercise is worth 2.54 |
 | 4 | The Python implementation, to floating-point tolerance, on identical inputs. Clean ASan and UBSan builds |
 | 5 | The geometric Asian closed form. Heston converging to Black-Scholes as vol-of-vol goes to zero |
 | 6 | Fit errors per maturity, reproducible from a cached chain snapshot |
@@ -191,6 +192,40 @@ Monte Carlo delta, same option, 200,000 paths: bump-and-revalue with common rand
 pathwise both give a standard error of 0.0011; likelihood ratio gives 0.0037, about 3.5 times
 noisier, because it weights whole payoffs by a random score instead of differentiating them.
 
+### Tier 3: American options
+
+```python
+from ope import crr_price, pde_price, pde_solve
+
+crr_price("put", 50, 50, 5 / 12, 0.10, 0.40, steps=2000, american=True)  # binomial tree, 4.2841
+pde_price("put", 50, 50, 5 / 12, 0.10, 0.40, american=True)  # Crank-Nicolson + PSOR, 4.2835
+pde_solve("put", 50, 50, 5 / 12, 0.10, 0.40, american=True).boundary  # early exercise boundary
+```
+
+```bash
+uv run ope american --type put -S 50 -K 50 -T 0.4167 -r 0.1 --sigma 0.4
+uv run ope plot-boundary --type put -S 50 -K 50 -T 0.4167 -r 0.1 --sigma 0.4 --out boundary.png
+```
+
+**Walkthrough:** [notebooks/tier3_american.ipynb](notebooks/tier3_american.ipynb): a 5-step tree
+drawn with its early-exercise nodes, the backward step by hand, the odd/even zigzag, the PDE's
+convergence, why the first PDE steps are implicit, the exercise boundary, and calls with and
+without dividends.
+
+![Early exercise boundary of an American put](docs/img/tier3_exercise_boundary.png)
+
+American puts, binomial tree (average of 2000 and 2001 steps) vs. PDE (300 x 300 grid):
+
+| Option | Tree | PDE | Gap | European | Early exercise premium |
+|---|---|---|---|---|---|
+| Hull's put (S=50, K=50, T=5m, r=10%, σ=40%) | 4.2844 | 4.2830 | 0.033% | 4.0760 | 0.2084 |
+| Tier 1 put (S=42, K=40, T=0.5, r=10%, σ=20%) | 0.9102 | 0.9100 | 0.021% | 0.8086 | 0.1016 |
+| Out of the money (S=100, K=110, T=1, r=5%, σ=25%) | 13.7432 | 13.7418 | 0.010% | 12.6616 | 1.0815 |
+| With dividends (S=100, K=90, T=2, r=3%, σ=30%, q=2%) | 10.3829 | 10.3794 | 0.034% | 10.1774 | 0.2055 |
+
+The first two PDE time steps are replaced by four implicit half-steps (Rannacher): without them,
+gamma read off the grid at the strike comes out as 5.1 instead of 0.039 on a 25-step run.
+
 ---
 
 ## Benchmarks
@@ -212,7 +247,7 @@ STEPS.md            working checklist per tier
 NOTES.md            condensed notes per tier (key formulas, gotchas, takeaways)
 QUIZ_LOG.md         interview-style questions I missed, with the correct answers
 DECISIONS.md        what was picked and ruled out per tier, and why
-REPORT.md           technical write-up (after Tier 3, updated after Tiers 4 and 6)
+REPORT.md           technical write-up: methods, validation, convergence, limits
 ```
 
 ---

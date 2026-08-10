@@ -90,3 +90,41 @@ N paths, s the sample standard deviation of the discounted payoffs.
   times noisier but works even for payoffs that jump.
 - Sobol points cover the bell curve evenly and beat 1/√N, but then the usual standard error
   formula no longer applies.
+
+## Tier 3: American options
+
+### Key formulas
+
+**Binomial tree (Cox-Ross-Rubinstein):**
+
+$$u = e^{\sigma\sqrt{\Delta t}}, \quad d = \frac{1}{u}, \quad p = \frac{e^{(r-q)\Delta t} - d}{u - d}, \qquad V_{i,j} = \max\left(e^{-r\Delta t}\left[p\,V_{i+1,j+1} + (1-p)\,V_{i+1,j}\right],\ \text{payoff}(S_{i,j})\right)$$
+
+The max is only there for an American option: at each node, the better of waiting and exercising.
+
+**PDE in log price** (x = ln S, τ = time to expiry), solved backwards from the payoff:
+
+$$\frac{\partial V}{\partial \tau} = \frac{1}{2}\sigma^2 \frac{\partial^2 V}{\partial x^2} + \left(r - q - \frac{1}{2}\sigma^2\right)\frac{\partial V}{\partial x} - rV, \qquad V \geq \text{payoff for an American option}$$
+
+Crank-Nicolson in time (average of explicit and implicit), the first steps fully implicit
+(Rannacher), and PSOR to enforce V ≥ payoff.
+
+### Gotchas
+
+- The tree price zigzags between odd and even step counts; average n and n + 1.
+- Put the strike on a grid node, or the kink gets smeared and convergence turns erratic.
+- Plain Crank-Nicolson rings at the payoff's kink: gamma at the strike came out 5.1 instead of
+  0.039. Two Rannacher steps fix it.
+- One absolute tolerance doesn't fit every price: small prices need an absolute floor, big prices
+  a relative bound.
+- The American minus European "premium" must use the same tree for both, or the tree's own error
+  shows up as a fake (even negative) premium.
+
+### Takeaways
+
+- An American option is priced backwards from expiry: at every node or grid point, the better of
+  waiting and exercising now.
+- Without dividends, an American call is never exercised early, so it equals the European call;
+  with a dividend yield it can be worth more.
+- An American put is exercised early when the stock falls below a boundary that rises toward the
+  strike as expiry approaches.
+- Tree and PDE are two independent methods; agreeing to 0.05% is the evidence both are right.
