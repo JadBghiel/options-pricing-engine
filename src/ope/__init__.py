@@ -11,7 +11,7 @@ from ope.black_scholes import (
     put_price,
 )
 from ope.implied_volatility import ImpliedVolResult, implied_vol, implied_vol_result
-from ope.monte_carlo import MCResult, gbm_terminal, mc_delta, mc_price
+from ope.monte_carlo import MCResult, gbm_terminal, mc_delta, mc_price, mc_price_from_normals
 from ope.pde import PDESolution, pde_price, pde_solve
 from ope.trees import backward_step, crr_params, crr_price
 
@@ -35,6 +35,7 @@ __all__ = [
     "implied_vol_result",
     "mc_delta",
     "mc_price",
+    "mc_price_from_normals",
     "pde_price",
     "pde_solve",
     "price",

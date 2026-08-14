@@ -73,15 +73,6 @@ def payoff(option: OptionType, s_t: npt.ArrayLike, K: float) -> FloatArray:
     return np.asarray(out, dtype=np.float64)
 
 
-def _normals(gen: np.random.Generator, n_paths: int, antithetic: bool) -> FloatArray:
-    if not antithetic:
-        return gen.standard_normal(n_paths)
-    if n_paths % 2:
-        raise ValueError("antithetic sampling needs an even n_paths (paths come in pairs)")
-    half = gen.standard_normal(n_paths // 2)
-    return np.concatenate([half, -half])
-
-
 def mc_price(
     option: OptionType,
     S: float,
@@ -104,9 +95,43 @@ def mc_price(
     """
     _check_option(option)
     _check_inputs(S, K, T, sigma, n_paths)
-    z = _normals(_rng(rng), n_paths, antithetic)
-    s_t = gbm_terminal(S, T, r, sigma, z, q)
+    if antithetic and n_paths % 2:
+        raise ValueError("antithetic sampling needs an even n_paths (paths come in pairs)")
+    z = _rng(rng).standard_normal(n_paths // 2 if antithetic else n_paths)
+    return mc_price_from_normals(
+        option, S, K, T, r, sigma, q, z=z, antithetic=antithetic, control_variate=control_variate
+    )
+
+
+def mc_price_from_normals(
+    option: OptionType,
+    S: float,
+    K: float,
+    T: float,
+    r: float,
+    sigma: float,
+    q: float = 0.0,
+    *,
+    z: npt.ArrayLike,
+    antithetic: bool = False,
+    control_variate: bool = False,
+) -> MCResult:
+    """the mc_price estimator on given standard normals, 1 path per draw (2 w/ antithetic)
+
+    feeding the same z to this and to ope.cpp.mc_price_from_normals checks the c++ port
+    exactly, since c++ cant reproduce numpy's random stream
+    """
+    zz = np.asarray(z, dtype=np.float64).ravel()
+    n_paths = 2 * zz.size if antithetic else zz.size
+    _check_option(option)
+    _check_inputs(S, K, T, sigma, n_paths)
+    if zz.size < 2:
+        raise ValueError(
+            "need >= 2 independent draws to estimate a standard error (an antithetic pair "
+            "counts as 1)"
+        )
     disc = math.exp(-r * T)
+    s_t = gbm_terminal(S, T, r, sigma, zz, q)
     x = disc * payoff(option, s_t, K)  # what we average
     y = disc * s_t  # control, its true mean is known
 
@@ -114,9 +139,9 @@ def mc_price(
         # LEARNING NOTE: a path and its mirror are not independent, so the standard error has
         # to come from the n/2 pair averages. treating the n payoffs as independent draws
         # would report a standard error that is too small
-        half = n_paths // 2
-        x = 0.5 * (x[:half] + x[half:])
-        y = 0.5 * (y[:half] + y[half:])
+        s_mirror = gbm_terminal(S, T, r, sigma, -zz, q)
+        x = 0.5 * (x + disc * payoff(option, s_mirror, K))
+        y = 0.5 * (y + disc * s_mirror)
 
     if control_variate:
         # LEARNING NOTE: when the simulated stocks come out high on average, so do the call
