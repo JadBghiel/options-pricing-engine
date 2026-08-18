@@ -1,8 +1,8 @@
 [build-system]
-# hatchling is a pure-python backend. Tier 4 swaps this block for scikit-build-core, which
-# builds the C++ extension from this same file
-requires = ["hatchling"]
-build-backend = "hatchling.build"
+# scikit-build-core runs CMakeLists.txt and puts the compiled ope._core next to the python files.
+# pybind11 comes from pypi here, so no system install is needed, only a c++20 compiler
+requires = ["scikit-build-core>=0.10", "pybind11>=2.13"]
+build-backend = "scikit_build_core.build"
 
 [project]
 name = "options-pricing-engine"
@@ -25,6 +25,7 @@ dev = [
     "scipy-stubs",  # scipy ships no type hints, mypy strict needs them
     "nbmake",  # runs the notebooks as tests in ci
     "ipykernel",  # the kernel vs code and nbmake run them with
+    "pytest-benchmark",  # python side of the benchmarks, benchmarks/run.sh
 ]
 plots = [
     "matplotlib>=3.8",
@@ -33,12 +34,27 @@ plots = [
 [project.scripts]
 ope = "ope.cli:main"
 
-[tool.hatch.version]
-# one source of truth for the version: the __version__ string in the package
-path = "src/ope/__init__.py"
+[tool.scikit-build]
+minimum-version = "build-system.requires"
+# release even for editable installs: a debug build would make every benchmark meaningless
+cmake.build-type = "Release"
+wheel.packages = ["src/ope"]
+# a fixed build dir so a rebuild after a c++ change only recompiles what changed
+build-dir = "build/{wheel_tag}"
 
-[tool.hatch.build.targets.wheel]
-packages = ["src/ope"]
+[tool.scikit-build.metadata.version]
+# one source of truth for the version: the __version__ string in the package
+provider = "scikit_build_core.metadata.regex"
+input = "src/ope/__init__.py"
+
+[tool.uv]
+# uv caches the built package, so it must know that a c++ change means a rebuild
+cache-keys = [
+    { file = "pyproject.toml" },
+    { file = "CMakeLists.txt" },
+    { file = "cpp/**/*.hpp" },
+    { file = "cpp/**/*.cpp" },
+]
 
 [tool.ruff]
 line-length = 100

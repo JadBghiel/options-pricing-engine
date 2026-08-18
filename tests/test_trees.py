@@ -1,6 +1,7 @@
 """tier 3 validation: cox ross rubinstein tree vs tier 1 and vs a naive tree written here"""
 
 import math
+from types import ModuleType
 from typing import Literal
 
 import numpy as np
@@ -47,45 +48,51 @@ def test_backward_step_by_hand() -> None:
     np.testing.assert_allclose(backward_step([0.0, 20.0], p=0.5, disc=1.0, exercise=[12.0]), [12.0])
 
 
-def test_hull_five_step_american_put() -> None:
+def test_hull_five_step_american_put(impl: ModuleType) -> None:
     # Hull, binomial trees: S=50, K=50, T=5 months, r=10%, sigma=40%, 5 steps -> about 4.49
     args = (50.0, 50.0, 5 / 12, 0.10, 0.40)
-    tree = crr_price("put", *args, steps=5, american=True)
+    tree = impl.crr_price("put", *args, steps=5, american=True)
     assert tree == pytest.approx(_naive_tree("put", *args, n=5), abs=1e-12)
     assert round(tree, 2) == 4.49
 
 
 @pytest.mark.parametrize("option", ["call", "put"])
-def test_matches_a_naive_american_tree(option: Option) -> None:
+def test_matches_a_naive_american_tree(impl: ModuleType, option: Option) -> None:
     args = (100.0, 95.0, 1.0, 0.05, 0.3)
-    assert crr_price(option, *args, steps=60, american=True) == pytest.approx(
+    assert impl.crr_price(option, *args, steps=60, american=True) == pytest.approx(
         _naive_tree(option, *args, n=60), abs=1e-10
     )
 
 
 @pytest.mark.parametrize("option", ["call", "put"])
 @pytest.mark.parametrize("args", [(42, 40, 0.5, 0.10, 0.20, 0.0), (100, 110, 1, 0.05, 0.25, 0.02)])
-def test_european_tree_converges_to_black_scholes(option: Option, args: tuple[float, ...]) -> None:
+def test_european_tree_converges_to_black_scholes(
+    impl: ModuleType, option: Option, args: tuple[float, ...]
+) -> None:
     exact = float(price(option, *args))
     # averaging n and n + 1 steps cancels most of the odd/even zigzag
-    tree = 0.5 * (crr_price(option, *args, steps=2000) + crr_price(option, *args, steps=2001))
+    tree = 0.5 * (
+        impl.crr_price(option, *args, steps=2000) + impl.crr_price(option, *args, steps=2001)
+    )
     assert tree == pytest.approx(exact, abs=1e-4)
 
 
-def test_american_call_without_dividends_is_the_european_call() -> None:
+def test_american_call_without_dividends_is_the_european_call(impl: ModuleType) -> None:
     args = (42.0, 40.0, 0.5, 0.10, 0.20)
-    assert crr_price("call", *args, steps=500, american=True) == crr_price("call", *args, steps=500)
+    assert impl.crr_price("call", *args, steps=500, american=True) == impl.crr_price(
+        "call", *args, steps=500
+    )
 
 
-def test_dividends_make_early_exercise_of_a_call_worth_something() -> None:
+def test_dividends_make_early_exercise_of_a_call_worth_something(impl: ModuleType) -> None:
     args = (100.0, 80.0, 1.0, 0.03, 0.25, 0.08)
-    premium = crr_price("call", *args, steps=1000, american=True) - float(price("call", *args))
+    premium = impl.crr_price("call", *args, steps=1000, american=True) - float(price("call", *args))
     assert premium > 2.0
 
 
-def test_american_put_is_worth_at_least_european_and_intrinsic() -> None:
+def test_american_put_is_worth_at_least_european_and_intrinsic(impl: ModuleType) -> None:
     for S in (30.0, 40.0, 50.0, 60.0):
-        american = crr_price("put", S, 50, 1, 0.08, 0.3, steps=400, american=True)
+        american = impl.crr_price("put", S, 50, 1, 0.08, 0.3, steps=400, american=True)
         assert american >= float(price("put", S, 50, 1, 0.08, 0.3)) - 1e-3
         assert american >= max(50 - S, 0) - 1e-12
 

@@ -4,20 +4,17 @@ reference values come from an independent script (plain math + scipy.stats), not
 """
 
 import math
+from types import ModuleType
 from typing import Literal
 
 import numpy as np
 import pytest
 
 from ope.black_scholes import (
-    call_price,
     d1_d2,
-    greeks,
     norm_cdf,
     norm_pdf,
-    price,
     price_bounds,
-    put_price,
 )
 
 Option = Literal["call", "put"]
@@ -62,12 +59,12 @@ def test_norm_pdf_is_the_slope_of_the_cdf() -> None:
 # reference values
 
 
-def test_hull_call_and_put() -> None:
+def test_hull_call_and_put(impl: ModuleType) -> None:
     # Hull, the Black-Scholes-Merton model: S=42, K=40, T=0.5, r=10%, sigma=20%
-    assert call_price(42, 40, 0.5, 0.10, 0.20) == pytest.approx(4.7594223929, abs=1e-9)
-    assert put_price(42, 40, 0.5, 0.10, 0.20) == pytest.approx(0.8085993729, abs=1e-9)
-    assert round(float(call_price(42, 40, 0.5, 0.10, 0.20)), 2) == 4.76
-    assert round(float(put_price(42, 40, 0.5, 0.10, 0.20)), 2) == 0.81
+    assert impl.call_price(42, 40, 0.5, 0.10, 0.20) == pytest.approx(4.7594223929, abs=1e-9)
+    assert impl.put_price(42, 40, 0.5, 0.10, 0.20) == pytest.approx(0.8085993729, abs=1e-9)
+    assert round(float(impl.call_price(42, 40, 0.5, 0.10, 0.20)), 2) == 4.76
+    assert round(float(impl.put_price(42, 40, 0.5, 0.10, 0.20)), 2) == 0.81
 
 
 def test_hull_d1_d2() -> None:
@@ -76,11 +73,11 @@ def test_hull_d1_d2() -> None:
     assert d2 == pytest.approx(0.6278412719, abs=1e-9)
 
 
-def test_hull_greeks_example() -> None:
+def test_hull_greeks_example(impl: ModuleType) -> None:
     # Hull, the Greek letters: S=49, K=50, T=20/52, r=5%, sigma=20%
     args = (49, 50, 20 / 52, 0.05, 0.20)
-    g = greeks("call", *args)
-    assert call_price(*args) == pytest.approx(2.4005273233, abs=1e-9)
+    g = impl.greeks("call", *args)
+    assert impl.call_price(*args) == pytest.approx(2.4005273233, abs=1e-9)
     assert g.delta == pytest.approx(0.5216046611, abs=1e-9)
     assert g.gamma == pytest.approx(0.0655440393, abs=1e-9)
     assert g.vega == pytest.approx(12.1054798826, abs=1e-8)
@@ -88,11 +85,11 @@ def test_hull_greeks_example() -> None:
     assert g.rho == pytest.approx(8.9069619496, abs=1e-8)
 
 
-def test_dividend_yield_reference() -> None:
+def test_dividend_yield_reference(impl: ModuleType) -> None:
     args = (100, 95, 0.75, 0.03, 0.25, 0.02)
-    g = greeks("call", *args)
-    assert call_price(*args) == pytest.approx(11.3631718658, abs=1e-9)
-    assert put_price(*args) == pytest.approx(5.7383454389, abs=1e-9)
+    g = impl.greeks("call", *args)
+    assert impl.call_price(*args) == pytest.approx(11.3631718658, abs=1e-9)
+    assert impl.put_price(*args) == pytest.approx(5.7383454389, abs=1e-9)
     assert g.delta == pytest.approx(0.6383091358, abs=1e-9)
     assert g.theta == pytest.approx(-5.5751867040, abs=1e-8)
     assert g.rho == pytest.approx(39.3508062834, abs=1e-8)
@@ -101,29 +98,29 @@ def test_dividend_yield_reference() -> None:
 # consistency checks
 
 
-def test_put_call_parity_on_500_random_sets() -> None:
+def test_put_call_parity_on_500_random_sets(impl: ModuleType) -> None:
     p = _random_params(500, seed=1)
-    lhs = call_price(**p) - put_price(**p)
+    lhs = impl.call_price(**p) - impl.put_price(**p)
     rhs = p["S"] * np.exp(-p["q"] * p["T"]) - p["K"] * np.exp(-p["r"] * p["T"])
     np.testing.assert_allclose(lhs, rhs, rtol=0, atol=1e-10)
 
 
-def test_gamma_and_vega_are_the_same_for_calls_and_puts() -> None:
+def test_gamma_and_vega_are_the_same_for_calls_and_puts(impl: ModuleType) -> None:
     p = _random_params(200, seed=2)
-    c, pu = greeks("call", **p), greeks("put", **p)
+    c, pu = impl.greeks("call", **p), impl.greeks("put", **p)
     np.testing.assert_allclose(c.gamma, pu.gamma, rtol=1e-12)
     np.testing.assert_allclose(c.vega, pu.vega, rtol=1e-12)
 
 
 @pytest.mark.parametrize("option", ["call", "put"])
-def test_greeks_match_central_finite_differences(option: Option) -> None:
+def test_greeks_match_central_finite_differences(impl: ModuleType, option: Option) -> None:
     p = _random_params(200, seed=3)
     S, K, T, r, sigma, q = (p[k] for k in ("S", "K", "T", "r", "sigma", "q"))
-    g = greeks(option, S, K, T, r, sigma, q)
+    g = impl.greeks(option, S, K, T, r, sigma, q)
 
     def v(**bump: np.ndarray) -> np.ndarray:
         args = {"S": S, "K": K, "T": T, "r": r, "sigma": sigma, "q": q} | bump
-        return np.asarray(price(option, **args))
+        return np.asarray(impl.price(option, **args))
 
     # bumps scaled to each input. gamma is a 2nd difference, the most sensitive to h
     hS, hT, hs, hr = 1e-4 * S, 1e-4 * T, 1e-4 * sigma, 1e-5
@@ -138,52 +135,52 @@ def test_greeks_match_central_finite_differences(option: Option) -> None:
         np.testing.assert_allclose(getattr(g, name), approx, rtol=1e-4, atol=1e-8, err_msg=name)
 
 
-def test_prices_stay_inside_no_arbitrage_bounds() -> None:
+def test_prices_stay_inside_no_arbitrage_bounds(impl: ModuleType) -> None:
     p = _random_params(500, seed=4)
     for option in ("call", "put"):
-        value = np.asarray(price(option, **p))
+        value = np.asarray(impl.price(option, **p))
         lower, upper = price_bounds(option, p["S"], p["K"], p["T"], p["r"], p["q"])
         assert np.all(value >= np.asarray(lower) - 1e-12)
         assert np.all(value <= np.asarray(upper) + 1e-12)
 
 
-def test_monotonic_in_spot_and_vol() -> None:
+def test_monotonic_in_spot_and_vol(impl: ModuleType) -> None:
     spots = np.linspace(50, 150, 201)
     vols = np.linspace(0.05, 1.0, 201)
-    assert np.all(np.diff(np.asarray(call_price(spots, 100, 1, 0.03, 0.2))) > 0)
-    assert np.all(np.diff(np.asarray(put_price(spots, 100, 1, 0.03, 0.2))) < 0)
-    assert np.all(np.diff(np.asarray(call_price(100, 100, 1, 0.03, vols))) > 0)
-    assert np.all(np.diff(np.asarray(put_price(100, 100, 1, 0.03, vols))) > 0)
+    assert np.all(np.diff(np.asarray(impl.call_price(spots, 100, 1, 0.03, 0.2))) > 0)
+    assert np.all(np.diff(np.asarray(impl.put_price(spots, 100, 1, 0.03, 0.2))) < 0)
+    assert np.all(np.diff(np.asarray(impl.call_price(100, 100, 1, 0.03, vols))) > 0)
+    assert np.all(np.diff(np.asarray(impl.put_price(100, 100, 1, 0.03, vols))) > 0)
 
 
 # degenerate inputs
 
 
-def test_expiry_gives_intrinsic_value() -> None:
+def test_expiry_gives_intrinsic_value(impl: ModuleType) -> None:
     spots = np.array([30.0, 40.0, 50.0])
-    np.testing.assert_allclose(call_price(spots, 40, 0, 0.05, 0.2), [0, 0, 10])
-    np.testing.assert_allclose(put_price(spots, 40, 0, 0.05, 0.2), [10, 0, 0])
+    np.testing.assert_allclose(impl.call_price(spots, 40, 0, 0.05, 0.2), [0, 0, 10])
+    np.testing.assert_allclose(impl.put_price(spots, 40, 0, 0.05, 0.2), [10, 0, 0])
 
 
-def test_zero_vol_gives_discounted_intrinsic_on_the_forward() -> None:
+def test_zero_vol_gives_discounted_intrinsic_on_the_forward(impl: ModuleType) -> None:
     S, K, T, r, q = np.array([90.0, 100.0, 110.0]), 100.0, 1.0, 0.05, 0.02
     fwd_intrinsic = S * math.exp(-q * T) - K * math.exp(-r * T)
-    np.testing.assert_allclose(call_price(S, K, T, r, 0, q), np.maximum(fwd_intrinsic, 0))
-    np.testing.assert_allclose(put_price(S, K, T, r, 0, q), np.maximum(-fwd_intrinsic, 0))
+    np.testing.assert_allclose(impl.call_price(S, K, T, r, 0, q), np.maximum(fwd_intrinsic, 0))
+    np.testing.assert_allclose(impl.put_price(S, K, T, r, 0, q), np.maximum(-fwd_intrinsic, 0))
 
 
-def test_zero_spot() -> None:
-    assert call_price(0, 100, 1, 0.05, 0.2) == 0.0
-    assert put_price(0, 100, 1, 0.05, 0.2) == pytest.approx(100 * math.exp(-0.05))
+def test_zero_spot(impl: ModuleType) -> None:
+    assert impl.call_price(0, 100, 1, 0.05, 0.2) == 0.0
+    assert impl.put_price(0, 100, 1, 0.05, 0.2) == pytest.approx(100 * math.exp(-0.05))
 
 
 @pytest.mark.filterwarnings("error")
 @pytest.mark.parametrize("option", ["call", "put"])
-def test_degenerate_greeks_are_finite_and_deterministic(option: Option) -> None:
+def test_degenerate_greeks_are_finite_and_deterministic(impl: ModuleType, option: Option) -> None:
     S = np.array([0.0, 90.0, 110.0, 90.0, 110.0])
     T = np.array([1.0, 0.0, 0.0, 1.0, 1.0])
     sigma = np.array([0.2, 0.2, 0.2, 0.0, 0.0])
-    g = greeks(option, S, 100, T, 0.05, sigma)
+    g = impl.greeks(option, S, 100, T, 0.05, sigma)
     for name in ("delta", "gamma", "vega", "theta", "rho"):
         assert np.all(np.isfinite(getattr(g, name))), name
     np.testing.assert_array_equal(g.gamma, 0.0)
@@ -197,17 +194,17 @@ def test_degenerate_greeks_are_finite_and_deterministic(option: Option) -> None:
 # api
 
 
-def test_vectorized_over_strikes_matches_scalar_calls() -> None:
+def test_vectorized_over_strikes_matches_scalar_calls(impl: ModuleType) -> None:
     strikes = np.array([80.0, 90.0, 100.0, 110.0, 120.0])
-    vec = np.asarray(call_price(100, strikes, 0.5, 0.03, 0.25))
+    vec = np.asarray(impl.call_price(100, strikes, 0.5, 0.03, 0.25))
     assert vec.shape == (5,)
-    np.testing.assert_allclose(vec, [call_price(100, k, 0.5, 0.03, 0.25) for k in strikes])
+    np.testing.assert_allclose(vec, [impl.call_price(100, k, 0.5, 0.03, 0.25) for k in strikes])
 
 
-def test_scalar_inputs_return_python_floats() -> None:
-    assert isinstance(call_price(100, 100, 1, 0.05, 0.2), float)
-    assert isinstance(greeks("put", 100, 100, 1, 0.05, 0.2).delta, float)
-    assert price("put", 42, 40, 0.5, 0.10, 0.20) == put_price(42, 40, 0.5, 0.10, 0.20)
+def test_scalar_inputs_return_python_floats(impl: ModuleType) -> None:
+    assert isinstance(impl.call_price(100, 100, 1, 0.05, 0.2), float)
+    assert isinstance(impl.greeks("put", 100, 100, 1, 0.05, 0.2).delta, float)
+    assert impl.price("put", 42, 40, 0.5, 0.10, 0.20) == impl.put_price(42, 40, 0.5, 0.10, 0.20)
 
 
 @pytest.mark.parametrize(
@@ -220,11 +217,11 @@ def test_scalar_inputs_return_python_floats() -> None:
         ((100, 100, 1, math.nan, 0.2), "finite"),
     ],
 )
-def test_invalid_inputs_raise(args: tuple[float, ...], match: str) -> None:
+def test_invalid_inputs_raise(impl: ModuleType, args: tuple[float, ...], match: str) -> None:
     with pytest.raises(ValueError, match=match):
-        call_price(*args)
+        impl.call_price(*args)
 
 
-def test_invalid_option_type_raises() -> None:
+def test_invalid_option_type_raises(impl: ModuleType) -> None:
     with pytest.raises(ValueError, match="call' or 'put"):
-        price("straddle", 100, 100, 1, 0.05, 0.2)  # type: ignore[arg-type]
+        impl.price("straddle", 100, 100, 1, 0.05, 0.2)  # type: ignore[arg-type]

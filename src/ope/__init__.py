@@ -15,6 +15,9 @@ from ope.monte_carlo import MCResult, gbm_terminal, mc_delta, mc_price, mc_price
 from ope.pde import PDESolution, pde_price, pde_solve
 from ope.trees import backward_step, crr_params, crr_price
 
+# last: the c++ wrapper imports the python modules above for their types
+from ope import cpp  # isort: skip
+
 __version__ = "0.1.0"
 
 __all__ = [
@@ -26,6 +29,7 @@ __all__ = [
     "__version__",
     "backward_step",
     "call_price",
+    "cpp",
     "crr_params",
     "crr_price",
     "d1_d2",

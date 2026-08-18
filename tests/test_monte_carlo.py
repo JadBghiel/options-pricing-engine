@@ -6,6 +6,7 @@ real spread) are checked over many seeds, not on 1 lucky seed
 """
 
 import math
+from types import ModuleType
 from typing import Literal
 
 import numpy as np
@@ -52,12 +53,12 @@ def test_payoff() -> None:
     ("antithetic", "control"), [(False, False), (True, False), (False, True), (True, True)]
 )
 def test_95_interval_holds_the_closed_form_about_95_percent_of_the_time(
-    option: Option, antithetic: bool, control: bool
+    impl: ModuleType, option: Option, antithetic: bool, control: bool
 ) -> None:
     exact = float(price(option, *HULL))
     inside = 0
     for seed in range(200):
-        lo, hi = mc_price(
+        lo, hi = impl.mc_price(
             option, *HULL, n_paths=4_000, antithetic=antithetic, control_variate=control, rng=seed
         ).ci95
         inside += lo <= exact <= hi
@@ -65,9 +66,11 @@ def test_95_interval_holds_the_closed_form_about_95_percent_of_the_time(
 
 
 @pytest.mark.parametrize(("antithetic", "control"), [(False, False), (True, False), (False, True)])
-def test_standard_error_matches_the_real_spread(antithetic: bool, control: bool) -> None:
+def test_standard_error_matches_the_real_spread(
+    impl: ModuleType, antithetic: bool, control: bool
+) -> None:
     runs = [
-        mc_price(
+        impl.mc_price(
             "call", *HULL, n_paths=4_000, antithetic=antithetic, control_variate=control, rng=s
         )
         for s in range(300)
@@ -77,9 +80,9 @@ def test_standard_error_matches_the_real_spread(antithetic: bool, control: bool)
     assert reported == pytest.approx(real_spread, rel=0.15)
 
 
-def test_variance_reduction_cuts_the_standard_error_at_equal_paths() -> None:
+def test_variance_reduction_cuts_the_standard_error_at_equal_paths(impl: ModuleType) -> None:
     def se(antithetic: bool, control: bool) -> float:
-        return mc_price(
+        return impl.mc_price(
             "call", *HULL, n_paths=200_000, antithetic=antithetic, control_variate=control, rng=7
         ).std_error
 
@@ -89,16 +92,16 @@ def test_variance_reduction_cuts_the_standard_error_at_equal_paths() -> None:
     assert plain / se(True, True) > 9.0  # both, about 12x
 
 
-def test_zero_vol_is_exact() -> None:
-    res = mc_price("call", 100, 90, 1, 0.05, 0.0, n_paths=10, rng=0)
+def test_zero_vol_is_exact(impl: ModuleType) -> None:
+    res = impl.mc_price("call", 100, 90, 1, 0.05, 0.0, n_paths=10, rng=0)
     assert res.estimate == pytest.approx(100 - 90 * math.exp(-0.05), rel=1e-12)
     assert res.std_error < 1e-12  # only rounding noise is left, every path is the same
 
 
-def test_same_seed_same_result_and_generator_accepted() -> None:
-    a = mc_price("put", *HULL, n_paths=1_000, rng=3)
-    b = mc_price("put", *HULL, n_paths=1_000, rng=np.random.default_rng(3))
-    c = mc_price("put", *HULL, n_paths=1_000, rng=4)
+def test_same_seed_same_result_and_generator_accepted(impl: ModuleType) -> None:
+    a = impl.mc_price("put", *HULL, n_paths=1_000, rng=3)
+    b = impl.mc_price("put", *HULL, n_paths=1_000, rng=np.random.default_rng(3))
+    c = impl.mc_price("put", *HULL, n_paths=1_000, rng=4)
     assert a == b
     assert a != c
 
@@ -145,10 +148,10 @@ def test_likelihood_ratio_is_noisier_than_pathwise() -> None:
         ({"n_paths": 101, "antithetic": True}, "even"),
     ],
 )
-def test_bad_inputs_raise(kwargs: dict[str, float], match: str) -> None:
+def test_bad_inputs_raise(impl: ModuleType, kwargs: dict[str, float], match: str) -> None:
     args = {"S": 42.0, "K": 40.0, "T": 0.5, "r": 0.1, "sigma": 0.2, "n_paths": 100} | kwargs
     with pytest.raises(ValueError, match=match):
-        mc_price("call", **args)  # type: ignore[arg-type]
+        impl.mc_price("call", **args)  # type: ignore[arg-type]
 
 
 def test_bad_delta_inputs_raise() -> None:
