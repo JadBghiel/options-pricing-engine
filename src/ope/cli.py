@@ -7,12 +7,14 @@ ope mc -S 42 -K 40 -T 0.5 -r 0.1 --sigma 0.2 --paths 100000 --antithetic --contr
 ope plot-mc -S 42 -K 40 -T 0.5 -r 0.1 --sigma 0.2 --out convergence.png
 ope american --type put -S 50 -K 50 -T 0.4167 -r 0.1 --sigma 0.4
 ope plot-boundary -S 50 -K 50 -T 0.4167 -r 0.1 --sigma 0.4 --out boundary.png
+ope mc -S 42 -K 40 -T 0.5 -r 0.1 --sigma 0.2 --paths 10000000 --cpp --threads 8
 """
 
 import argparse
 import sys
 from collections.abc import Callable, Sequence
 
+from ope import cpp
 from ope.black_scholes import greeks, price
 from ope.implied_volatility import implied_vol_result
 from ope.monte_carlo import mc_price
@@ -30,6 +32,10 @@ def _add_option_args(p: argparse.ArgumentParser, *, spot: bool = True) -> None:
     p.add_argument("-q", "--div-yield", type=float, default=0.0, help="continuous, default 0")
 
 
+def _add_cpp_arg(p: argparse.ArgumentParser, what: str = "it") -> None:
+    p.add_argument("--cpp", action="store_true", help=f"compute {what} with the C++ core")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="ope", description="Options pricing engine.")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -37,6 +43,7 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("price", help="Black-Scholes price and Greeks")
     _add_option_args(p)
     p.add_argument("--sigma", type=float, required=True, help="volatility, 0.2 = 20%%")
+    _add_cpp_arg(p)
 
     p = sub.add_parser("iv", help="implied volatility from a price")
     _add_option_args(p)
@@ -54,6 +61,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--seed", type=int, default=0, help="same seed, same result")
     p.add_argument("--antithetic", action="store_true", help="pair each draw z with -z")
     p.add_argument("--control", action="store_true", help="control variate on the stock")
+    _add_cpp_arg(p)
+    p.add_argument("--threads", type=int, default=None, help="with --cpp, default all cores")
 
     p = sub.add_parser("plot-mc", help="plot Monte Carlo convergence vs paths to a PNG")
     _add_option_args(p)
@@ -66,6 +75,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--sigma", type=float, required=True, help="volatility, 0.2 = 20%%")
     p.add_argument("--steps", type=int, default=2000, help="tree time steps")
     p.add_argument("--grid", type=int, default=300, help="pde nodes and time steps")
+    _add_cpp_arg(p, what="the tree")
 
     p = sub.add_parser("plot-boundary", help="plot the early exercise boundary to a PNG")
     _add_option_args(p)
@@ -76,8 +86,8 @@ def build_parser() -> argparse.ArgumentParser:
 
 def _cmd_price(a: argparse.Namespace) -> int:
     args = (a.spot, a.strike, a.maturity, a.rate, a.sigma, a.div_yield)
-    value = price(a.option, *args)
-    g = greeks(a.option, *args)
+    value = (cpp.price if a.cpp else price)(a.option, *args)
+    g = (cpp.greeks if a.cpp else greeks)(a.option, *args)
     print(
         f"{a.option}  S={a.spot:g} K={a.strike:g} T={a.maturity:g} r={a.rate:g} "
         f"q={a.div_yield:g} sigma={a.sigma:g}"
@@ -103,18 +113,24 @@ def _cmd_iv(a: argparse.Namespace) -> int:
 
 def _cmd_mc(a: argparse.Namespace) -> int:
     args = (a.spot, a.strike, a.maturity, a.rate, a.sigma, a.div_yield)
-    res = mc_price(
-        a.option,
-        *args,
-        n_paths=a.paths,
-        antithetic=a.antithetic,
-        control_variate=a.control,
-        rng=a.seed,
-    )
+    kw = {
+        "n_paths": a.paths,
+        "antithetic": a.antithetic,
+        "control_variate": a.control,
+        "rng": a.seed,
+    }
+    if a.cpp:  # c++ draws from its own generator, so a seed gives a different (valid) estimate
+        res = cpp.mc_price(a.option, *args, **kw, threads=a.threads)
+    else:
+        res = mc_price(a.option, *args, **kw)
     exact = float(price(a.option, *args))
     lo, hi = res.ci95
     where = "inside" if lo <= exact <= hi else "outside"
-    print(f"monte carlo  {res.estimate:.6f}  (std error {res.std_error:.6f}, {res.n_paths} paths)")
+    engine = "c++" if a.cpp else "numpy"
+    print(
+        f"monte carlo  {res.estimate:.6f}  (std error {res.std_error:.6f}, {res.n_paths} paths, "
+        f"{engine})"
+    )
     print(f"95% CI       [{lo:.6f}, {hi:.6f}]")
     print(f"closed form  {exact:.6f}  ({where} the interval)")
     return 0
@@ -155,7 +171,7 @@ def _cmd_plot_mc(a: argparse.Namespace) -> int:
 
 def _cmd_american(a: argparse.Namespace) -> int:
     args = (a.spot, a.strike, a.maturity, a.rate, a.sigma, a.div_yield)
-    tree = crr_price(a.option, *args, steps=a.steps, american=True)
+    tree = (cpp.crr_price if a.cpp else crr_price)(a.option, *args, steps=a.steps, american=True)
     pde = pde_price(a.option, *args, american=True, n_space=a.grid, n_time=a.grid)
     european = float(price(a.option, *args))
     print(

@@ -103,3 +103,18 @@ def test_tree_convergence_plot() -> None:
 
     fig = plot_tree_convergence("call", 42, 40, 0.5, 0.10, 0.20, max_steps=40)
     assert len(fig.axes) == 1
+
+
+def test_cpp_flag_gives_the_same_prices(capsys: pytest.CaptureFixture[str]) -> None:
+    hull = ["-S", "42", "-K", "40", "-T", "0.5", "-r", "0.1", "--sigma", "0.2"]
+    assert main(["price", *hull, "--cpp"]) == 0
+    assert "4.759422" in capsys.readouterr().out
+    assert main(["mc", *hull, "--paths", "20000", "--cpp", "--threads", "2"]) == 0
+    out = capsys.readouterr().out
+    assert "c++" in out
+    assert "4.759422" in out
+    put = ["--type", "put", "-S", "50", "-K", "50", "-T", "0.4167", "-r", "0.1", "--sigma", "0.4"]
+    assert main(["american", *put, "--steps", "200", "--grid", "50"]) == 0
+    numpy_line = capsys.readouterr().out.splitlines()[0]
+    assert main(["american", *put, "--steps", "200", "--grid", "50", "--cpp"]) == 0
+    assert capsys.readouterr().out.splitlines()[0] == numpy_line  # same tree price to 6 digits
