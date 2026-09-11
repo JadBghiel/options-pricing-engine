@@ -128,3 +128,48 @@ Crank-Nicolson in time (average of explicit and implicit), the first steps fully
 - An American put is exercised early when the stock falls below a boundary that rises toward the
   strike as expiry approaches.
 - Tree and PDE are two independent methods; agreeing to 0.05% is the evidence both are right.
+
+## Tier 4: C++ core
+
+### Key formulas
+
+**Philox random numbers:** a keyed scrambler, no state between draws.
+
+$$\text{block}_k = \text{philox}(\text{counter} = k,\ \text{key} = \text{seed}), \qquad z_i = \text{BoxMuller}(\text{block}_{\lfloor i/4 \rfloor})_{\,i \bmod 4}$$
+
+$$z_1 = \sqrt{-2\ln u_1}\,\cos(2\pi u_2), \qquad z_2 = \sqrt{-2\ln u_1}\,\sin(2\pi u_2)$$
+
+**Merging two chunks** (counts n_a, n_b, means, centered sums of squares M2), exact in algebra:
+
+$$\delta = \bar{x}_b - \bar{x}_a, \quad \bar{x} = \bar{x}_a + \delta\,\frac{n_b}{n}, \quad M_2 = M_{2,a} + M_{2,b} + \delta^2\,\frac{n_a n_b}{n}$$
+
+**Amdahl's law:** with a serial fraction s, n threads give at most
+
+$$\text{speedup}(n) = \frac{1}{s + (1 - s)/n}$$
+
+### Gotchas
+
+- Compare C++ with NumPy, not with Python loops: a loop is 10 to 100x slower than anything
+  compiled, and nobody prices a chain that way.
+- Benchmark a Release build. The module records its build type and the benchmarks refuse a
+  Debug one.
+- Never `-ffast-math`: it assumes no infinities, and the degenerate Black-Scholes cases set d1 to
+  ±∞ on purpose. `option.hpp` refuses to compile under it.
+- Don't expect identical bits: `erfc` vs. SciPy's `ndtr`, the C library's `exp` vs. NumPy's, and the
+  summation order all differ in the last place. Compare within a tolerance.
+- C++ can't reproduce NumPy's random stream: feed both sides the same normals for an exact check.
+- Time threaded code with wall-clock time (`UseRealTime`): the main thread's CPU time hardly moves
+  while the workers run.
+- Thread scaling on a laptop is noisy (2.9x to 5.1x at 8 threads across runs): turbo, hyperthreads
+  sharing a core, and other programs.
+
+### Takeaways
+
+- C++ wins outright where Python pays its interpreter in a loop (the tree: 30x). Where NumPy
+  already runs compiled loops, one C++ thread only ties it; threads bring the rest.
+- Monte Carlo on 1 thread is a tie for a precise reason: C++ prices about 2x faster from the same
+  normals, but its Box-Muller normals cost 2x more than NumPy's ziggurat ones.
+- Reproducible parallel random numbers come from a counter-based generator plus a fixed reduction
+  order, not from luck.
+- One test suite for two implementations: same signatures, a fixture that swaps the module.
+

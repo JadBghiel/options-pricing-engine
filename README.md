@@ -12,10 +12,11 @@ slower method that is already trusted).
 
 I documented my full learning process in Notion, reach out privately if you wish to consult it.
 
-> **Status:** the core engine (Tiers 0 to 3) is built and validated locally: Black-Scholes with
-> Greeks and implied vol, Monte Carlo with variance reduction, and American options by binomial
-> tree and Crank-Nicolson PDE. 112 tests, 99% branch coverage. Write-up: [REPORT.md](REPORT.md).
-> **Tier 4 (C++ core) is next.**
+> **Status:** Tiers 0 to 4 are built and validated locally: Black-Scholes with Greeks and
+> implied vol, Monte Carlo with variance reduction, American options by binomial tree and
+> Crank-Nicolson PDE, and a multithreaded C++20 core that matches the Python to rounding.
+> 196 Python tests (99% branch coverage) and 20 C++ tests, clean under ASan, UBSan and TSan.
+> Write-up: [REPORT.md](REPORT.md). **Tier 5 (exotics and Heston) is next.**
 
 ---
 
@@ -78,7 +79,7 @@ The engine doesn't places or modifies orders. The IBKR gateaway code is read onl
 | 1 | Hull's example (S=42, K=40, r=10%, σ=20%, T=0.5): call ≈ 4.76, put ≈ 0.81. Greeks vs. finite differences to 1e-4. Implied vol round-trip to 1e-6. Put-call parity |
 | 2 | The Tier 1 price inside the 95% confidence interval about 95% of the time (checked over 200 seeds per method). Reported standard errors match the real spread across seeds. Variance reduction cuts the standard error 2x to 12x at equal N. Monte Carlo deltas (three ways) vs. the analytical delta within their standard error |
 | 3 | Tree and PDE converge to Tier 1 on European payoffs (1e-4 and second order). American puts from tree and PDE agree to 0.05% of the price. American call on a non-dividend stock equals the European call exactly; with an 8% dividend yield early exercise is worth 2.54 |
-| 4 | The Python implementation, to floating-point tolerance, on identical inputs. Clean ASan and UBSan builds |
+| 4 | The Python implementation on identical inputs: 1e-11 relative on 100,000 random options (largest gap 1.1e-13), the same tree to 1e-13, the same Monte Carlo on the same normals to 1e-11. The C++ generator matches NumPy's Philox bit for bit, and a seed gives the same bits on 1 to 8 threads. Clean ASan, UBSan and TSan builds |
 | 5 | The geometric Asian closed form. Heston converging to Black-Scholes as vol-of-vol goes to zero |
 | 6 | Fit errors per maturity, reproducible from a cached chain snapshot |
 | 7 | Read-only behaviour on the live account. The MCP tools are listed and callable from the MCP inspector |
@@ -90,10 +91,10 @@ The engine doesn't places or modifies orders. The IBKR gateaway code is read onl
 | Layer | Choice |
 |---|---|
 | Library | Python 3.12, NumPy, SciPy (typed with scipy-stubs), full type hints |
-| Tooling | uv (environment and lockfile), hatchling (build backend until Tier 4) |
+| Tooling | uv (environment and lockfile), scikit-build-core (build backend: runs CMake, compiles the C++ core) |
 | Quality | ruff (lint and format), mypy strict, pytest with coverage, GitHub Actions, Codecov |
 | Performance core | C++20, CMake, pybind11, scikit-build-core |
-| C++ testing and speed | GoogleTest, Google Benchmark, pytest-benchmark, ASan and UBSan |
+| C++ testing and speed | GoogleTest, Google Benchmark, pytest-benchmark, ASan, UBSan and TSan |
 | Analysis | pandas, matplotlib |
 | Market data | IBKR API, read-only, cached and paced; yfinance as fallback |
 | Integration | an MCP server (Tier 7) for QuantDesk |
@@ -102,7 +103,8 @@ The engine doesn't places or modifies orders. The IBKR gateaway code is read onl
 
 ## Getting started
 
-Needs [uv](https://docs.astral.sh/uv/) and Python 3.12.
+Needs [uv](https://docs.astral.sh/uv/), Python 3.12 and a C++20 compiler (GCC 11+ or Clang 14+).
+Installing compiles the C++ core; CMake and pybind11 are fetched automatically if missing.
 
 ```bash
 git clone https://github.com/JadBghiel/options-pricing-engine.git
@@ -197,7 +199,7 @@ noisier, because it weights whole payoffs by a random score instead of different
 ```python
 from ope import crr_price, pde_price, pde_solve
 
-crr_price("put", 50, 50, 5 / 12, 0.10, 0.40, steps=2000, american=True)  # binomial tree, 4.2841
+crr_price("put", 50, 50, 5 / 12, 0.10, 0.40, steps=2000, american=True)  # binomial tree, 4.2839
 pde_price("put", 50, 50, 5 / 12, 0.10, 0.40, american=True)  # Crank-Nicolson + PSOR, 4.2835
 pde_solve("put", 50, 50, 5 / 12, 0.10, 0.40, american=True).boundary  # early exercise boundary
 ```
@@ -226,11 +228,63 @@ American puts, binomial tree (average of 2000 and 2001 steps) vs. PDE (300 x 300
 The first two PDE time steps are replaced by four implicit half-steps (Rannacher): without them,
 gamma read off the grid at the strike comes out as 5.1 instead of 0.039 on a 25-step run.
 
+### Tier 4: C++ core
+
+The C++ versions live in `ope.cpp`, with the same names and signatures as the Python ones.
+
+```python
+import ope
+from ope import cpp
+
+cpp.price("call", 42, 40, 0.5, 0.10, 0.20)  # 4.7594, computed in C++
+cpp.crr_price("put", 50, 50, 5 / 12, 0.10, 0.40, steps=2000, american=True)  # 4.2839, 30x faster
+cpp.mc_price("call", 42, 40, 0.5, 0.10, 0.20, n_paths=10_000_000, rng=0, threads=8)
+
+# C++ can't reproduce NumPy's random stream, so both sides are checked on the same normals
+z = cpp.normals(1_000_000, rng=0)  # exactly the draws cpp.mc_price(rng=0) uses
+ope.mc_price_from_normals("call", 42, 40, 0.5, 0.10, 0.20, z=z)  # 4.760963344692207
+cpp.mc_price_from_normals("call", 42, 40, 0.5, 0.10, 0.20, z=z)  # 4.7609633446922075
+```
+
+```bash
+uv run ope mc -S 42 -K 40 -T 0.5 -r 0.1 --sigma 0.2 --paths 10000000 --cpp --threads 8
+cmake -S . -B build/cpp -DOPE_BUILD_TESTS=ON && cmake --build build/cpp && ctest --test-dir build/cpp
+```
+
+**Walkthrough:** [notebooks/tier4_cpp_core.ipynb](notebooks/tier4_cpp_core.ipynb): Python and C++
+side by side and why they differ in the last bits, the Philox generator checked against NumPy,
+the same price for any thread count, the thread scaling, and where the time goes.
+
+The Monte Carlo runs on any number of threads and gives the same bits for a given seed: normal
+number i always comes from the same Philox block, and the paths are summed in fixed chunks that
+are merged in order.
+
 ---
 
 ## Benchmarks
 
-Filled in at Tier 4: pure Python vs. NumPy vs. single-thread C++ vs. multithreaded C++.
+Median times from Python, Release build, on a 4-core laptop (Intel i5-1135G7, 8 hardware threads).
+"NumPy" is the library itself, vectorized; pure Python loops are only the floor. Reproduce
+everything with one command: `bash benchmarks/run.sh` (full output in
+[benchmarks/RESULTS.md](benchmarks/RESULTS.md)).
+
+| Workload | Pure Python | NumPy | C++ 1 thread | C++ 8 threads | C++ vs. NumPy |
+|---|---:|---:|---:|---:|---:|
+| Black-Scholes, 100,000 calls | 44.8 ms | 7.7 ms | 7.2 ms | 2.5 ms | 3.1x |
+| Monte Carlo, 1,000,000 paths | 582 ms | 35.6 ms | 37.5 ms | 11.4 ms | 3.1x |
+| American put, CRR tree, 2,000 steps | 698 ms | 39.0 ms | 1.3 ms | n/a | 30x |
+
+What the table says:
+- **The tree** is where C++ wins outright: the Python version pays the interpreter at each of the
+  2,000 time steps, and C++ runs one tight loop on one array.
+- **On one thread, C++ only ties NumPy** for Black-Scholes and Monte Carlo, because NumPy's inner
+  loops are compiled C too. For Monte Carlo, C++ prices about 2x faster from the same normals but draws
+  its normals 2x slower (Philox and Box-Muller against NumPy's ziggurat), so it evens out.
+- **Threads** bring the rest. The Monte Carlo speedup at 8 threads ranges from 2.9x to 5.1x across
+  runs on this laptop: 4 physical cores, turbo that slows down as more cores work, and whatever
+  else the machine is doing.
+
+![Monte Carlo time and speedup against the number of threads](docs/img/tier4_thread_scaling.png)
 
 ---
 
@@ -238,8 +292,10 @@ Filled in at Tier 4: pure Python vs. NumPy vs. single-thread C++ vs. multithread
 
 ```
 src/ope/            Python library (models, Greeks, Monte Carlo, trees, PDE, calibration, risk)
-cpp/                C++ core and pybind11 bindings (Tier 4)
-tests/              validation tests for every tier
+cpp/                C++20 core: headers, sources, pybind11 bindings, GoogleTest, Google Benchmark
+CMakeLists.txt      builds the Python module (through scikit-build-core) or the C++ tests and benchmarks
+tests/              validation tests for every tier, run on the Python and the C++ side
+benchmarks/         pytest-benchmark suite, run.sh (one command for every number) and RESULTS.md
 notebooks/          one walkthrough per tier: plots, experiments, exercises (run in CI)
 docs/img/           plots used in this README
 .github/workflows/  CI
@@ -260,6 +316,7 @@ Parts of this projects are also based on external sources, such as books I read 
 | 1 | Hull, *Options, Futures, and Other Derivatives*: the Black-Scholes-Merton model and the Greek letters. Joshi, *The Concepts and Practice of Mathematical Finance* |
 | 2 | Glasserman, *Monte Carlo Methods in Financial Engineering* |
 | 3 | Hull: binomial trees and numerical procedures. Wilmott, *Paul Wilmott Introduces Quantitative Finance* (finite differences) |
+| 4 | Salmon et al., *Parallel Random Numbers: As Easy as 1, 2, 3* (2011, Philox). Chan, Golub and LeVeque, *Algorithms for Computing the Sample Variance* (1983). Box and Muller (1958) |
 | 5 | Heston (1993). Albrecher et al., *The Little Heston Trap* (2007) |
 | 6 | Gatheral, *The Volatility Surface*. Gatheral and Jacquier, *Arbitrage-free SVI volatility surfaces* (2014) |
 

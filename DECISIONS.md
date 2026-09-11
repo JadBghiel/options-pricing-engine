@@ -136,3 +136,47 @@ delta method within its standard error. 80 tests, 99% branch coverage.
 **Validated:** Hull's 5-step put 4.4885; European tree within 1e-4 and PDE within 5e-5 relative of
 Tier 1; American puts tree vs. PDE within 0.05%; American call = European call without dividends.
 112 tests, 99% branch coverage. Write-up in REPORT.md.
+
+## T4. C++ core
+
+**Chosen:**
+- Black-Scholes, Monte Carlo and the CRR tree in C++20, as a static library behind a thin
+  pybind11 module (`ope._core`), wrapped by `ope.cpp` with the same signatures as the Python side
+- scikit-build-core instead of hatchling, so one `pyproject.toml` builds the Python package and the
+  C++ extension (Release, no `-ffast-math`, no fused multiply-add)
+- Philox 4x64-10 with Box-Muller for the C++ normals: normal number i is a pure function of the
+  seed and i
+- Monte Carlo split into fixed chunks of 16,384 draws, summed on their own and merged in order
+  with the Chan-Golub-LeVeque formula, on `std::thread`
+- one pytest suite run on both implementations (an `impl` fixture), plus direct comparisons on the
+  same inputs and the same pre-generated normals
+- GoogleTest, Google Benchmark and pytest-benchmark; ASan, UBSan and TSan in CI
+
+**Why:**
+- **Same signatures.** The existing Tier 1 to 3 tests become the C++ tests for free, and a user
+  switches by changing `ope.` to `ope.cpp.`.
+- **Counter-based random numbers.** No generator state to share or split between threads: a
+  thread starting at path 1,000,000 computes its block directly. Python can ask for the exact draws
+  the C++ run used and replay it.
+- **Fixed chunks, merged in order.** Floating-point addition isn't associative, so this is what
+  makes a seed give the same bits on 1 thread or 8.
+- **Same normals for both sides.** C++ can't reproduce NumPy's stream, so the exact check feeds
+  both the same array; the statistical checks (coverage, standard errors) run on each side's own
+  generator.
+
+**Considered and ruled out:**
+- *OpenMP*: shorter, but `std::thread` needs no extra runtime and keeps the work split explicit.
+- *mt19937 seeded per thread*: streams that are probably independent, not provably, and results
+  that change with the thread count.
+- *Ziggurat for the normals*: about 2x faster than Box-Muller (it's why NumPy wins on 1 thread),
+  but 100+ lines of tables. Kept as the next speed-up.
+- *`-ffast-math` and `-march=native`*: faster, but they break the infinities the degenerate
+  Black-Scholes cases rely on, and make results machine-dependent.
+- *Bit-identical results to Python*: impossible with different `exp` and `N(x)` implementations;
+  compared within 1e-11 relative instead.
+
+**Validated:** prices and Greeks within 1e-11 relative of Python on 100,000 random options (largest
+gap 1.1e-13), the tree to 1e-13, Monte Carlo on the same normals to 1e-11; Philox bit for bit
+against NumPy and against the Random123 known answers; same bits on 1 to 8 threads. 196 Python
+tests (99% coverage) and 20 GoogleTest tests, clean under ASan, UBSan and TSan. Benchmarks: tree
+30x faster than NumPy, Black-Scholes and Monte Carlo about 3x with 8 threads (README).
