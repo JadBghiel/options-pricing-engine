@@ -1,7 +1,8 @@
-# Report: pricing European and American options four ways
+# Report: pricing European and American options four ways, in Python and C++
 
-A technical write-up of the core engine (Tiers 1 to 3): what each method does, how it was
-validated, how it converges, and where it stops being trustworthy. Updated after Tiers 4 and 6.
+A technical write-up of the core engine (Tiers 1 to 3) and its C++ port (Tier 4): what each
+method does, how it was validated, how it converges, what the C++ core buys, and where it all
+stops being trustworthy. Updated after Tiers 4 and 6.
 
 All numbers come from the code in this repository and can be reproduced with the commands and
 notebooks referenced below. The reference case throughout is Hull's call, S = 42, K = 40,
@@ -60,9 +61,15 @@ Every reference value is recomputed by an independent script, never copied from 
 | American put, tree vs. PDE (300 × 300) | agree to 0.05% of the price on four cases (largest gap 0.034%) |
 | American call without dividends | equals the European call exactly on the tree, to 1e-6 on the PDE |
 | Hull's 5-step American put | 4.4885, Hull's 4.49 |
+| C++ vs. Python, Black-Scholes | 1e-11 relative on 100,000 random options; largest gap 1.1e-13 |
+| C++ vs. Python, tree | 1e-13 relative; largest gap 8.5e-16 |
+| C++ vs. Python, Monte Carlo on the same normals | 1e-11 relative; largest gap 3.7e-13 |
+| C++ random numbers | Philox bit for bit vs. NumPy and Random123; same bits on 1 to 8 threads |
 
-112 tests, 99% branch coverage, run with lint, strict type checks and the three notebooks on every
-push.
+196 Python tests (99% branch coverage) and 20 C++ tests, run with lint, strict type checks, the
+four notebooks and the C++ tests under AddressSanitizer, UndefinedBehaviorSanitizer and
+ThreadSanitizer on every push. The Tier 1 to 3 tests that apply to a ported function run on both
+implementations.
 
 ## 3. Convergence
 
@@ -96,7 +103,50 @@ gamma read off a 25-step grid at the strike is 5.1 instead of 0.039; with it, 0.
 
 ![Early exercise boundary](docs/img/tier3_exercise_boundary.png)
 
-## 4. Limits
+## 4. The C++ core
+
+**What was ported.** Black-Scholes (prices and Greeks, one option or a whole chain), the Monte
+Carlo pricer and the CRR tree, in C++20 with CMake, exposed through pybind11 as `ope.cpp` with the
+same signatures as the Python functions. scikit-build-core builds it from the same
+`pyproject.toml`, always in Release, without `-ffast-math` and without fused multiply-add.
+
+**Why the results differ in the last bits, and how they are compared.** The two sides use
+different implementations of N(x) (`erfc` vs. SciPy's `ndtr`) and of `exp`, and add numbers in a
+different order. Hull's call is 4.7594223928715316 in Python and 4.7594223928715422 in C++: 1.5
+units in the last place of the 32.72 stock leg it is computed from. Every comparison uses 1e-11
+relative with a 1e-12 absolute floor, about 10 times the largest gap measured.
+
+**Random numbers for threads.** C++ can't reproduce NumPy's random stream, so for an exact check
+both sides price the same pre-generated normals. The C++ generator is Philox 4x64-10, a
+counter-based generator: normal number i is a pure function of the seed and i (block i/4 through
+Box-Muller). The Monte Carlo cuts the draws into chunks of 16,384, each thread sums whole chunks,
+and the chunks' means and centered sums are merged in chunk order (Chan, Golub and LeVeque). A
+seed therefore gives the same bits on any number of threads, and Python can replay a C++ run from
+`cpp.normals`.
+
+**Benchmarks** (`bash benchmarks/run.sh`; medians from Python, Release build, Intel i5-1135G7,
+4 cores and 8 hardware threads):
+
+| Workload | Pure Python | NumPy | C++ 1 thread | C++ 8 threads | C++ vs. NumPy |
+|---|---:|---:|---:|---:|---:|
+| Black-Scholes, 100,000 calls | 44.8 ms | 7.7 ms | 7.2 ms | 2.5 ms | 3.1× |
+| Monte Carlo, 1,000,000 paths | 582 ms | 35.6 ms | 37.5 ms | 11.4 ms | 3.1× |
+| American put, CRR tree, 2,000 steps | 698 ms | 39.0 ms | 1.3 ms | n/a | 30× |
+
+The comparison that matters is against NumPy, not the Python loops. The tree gains 30× because
+the Python version pays the interpreter at each of its 2,000 time steps. Black-Scholes and Monte
+Carlo on one thread only tie NumPy, whose inner loops are compiled C too. For Monte Carlo the tie
+splits cleanly: from the same normals C++ prices about twice as fast, but its Box-Muller normals
+(a log, a square root, a sine and a cosine per pair) cost about twice as much as NumPy's ziggurat.
+
+**Thread scaling.** The Monte Carlo speedup at 8 threads ranged from 2.9× to 5.1× across runs on
+this laptop: the 8 hardware threads share 4 physical cores, turbo slows as more cores work, and
+other programs compete. Timings use wall-clock time; the CPU time of the main thread barely moves
+while the workers run.
+
+![Monte Carlo time and speedup against the number of threads](docs/img/tier4_thread_scaling.png)
+
+## 5. Limits
 
 - **The model.** Everything assumes constant volatility, no jumps and frictionless continuous
   hedging. Real option prices show a volatility smile; Tier 5 (Heston) and Tier 6 (calibration)
@@ -106,17 +156,23 @@ gamma read off a 25-step grid at the strike is 5.1 instead of 0.039; with it, 0.
 - **Implied volatility is scalar** and, far out of the money and close to expiry, Newton barely
   beats bisection; Newton on log price would fix it if chain inversion gets slow (Tier 6).
 - **PSOR is pure Python.** An American PDE price takes about 1.3 to 1.5 s on a 400 × 400 grid. Tier 4
-  ports the hot paths to C++.
+  ported Black-Scholes, Monte Carlo and the tree (its stated scope); the PDE is the next port.
+- **C++ normals are slower than NumPy's.** Box-Muller costs about 2× NumPy's ziggurat, so a
+  single-threaded C++ Monte Carlo only ties NumPy. A ziggurat sampler is the next speed-up.
+- **Thread scaling numbers are machine-dependent** and noisy on a laptop; the benchmarks report
+  medians and the README gives the range seen.
 - **The exercise boundary is grid-resolution limited:** it moves in steps of one grid node, so
   it looks like a staircase unless the grid is fine.
 - **Discrete dividends** are not modelled, only a continuous yield q.
 
-## 5. Reproduce
+## 6. Reproduce
 
 ```bash
-uv sync --all-extras
-uv run pytest                                   # 112 tests
-uv run pytest --nbmake notebooks --no-cov       # the three walkthrough notebooks
+uv sync --all-extras                            # also compiles the C++ core (needs a C++20 compiler)
+uv run pytest                                   # 196 tests, Python and C++
+uv run pytest --nbmake notebooks --no-cov       # the four walkthrough notebooks
+cmake -S . -B build/cpp -DOPE_BUILD_TESTS=ON && cmake --build build/cpp && ctest --test-dir build/cpp
+bash benchmarks/run.sh                          # every benchmark number, then benchmarks/RESULTS.md
 uv run ope mc -S 42 -K 40 -T 0.5 -r 0.1 --sigma 0.2 --antithetic --control
 uv run ope american --type put -S 50 -K 50 -T 0.4167 -r 0.1 --sigma 0.4
 ```
