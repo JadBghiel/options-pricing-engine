@@ -10,6 +10,15 @@ from ope.black_scholes import (
     price_bounds,
     put_price,
 )
+from ope.exotics import (
+    asian_geometric_price,
+    asian_mc,
+    barrier_mc,
+    barrier_price,
+    gbm_paths,
+    lookback_mc,
+    lookback_price,
+)
 from ope.implied_volatility import ImpliedVolResult, implied_vol, implied_vol_result
 from ope.monte_carlo import MCResult, gbm_terminal, mc_delta, mc_price, mc_price_from_normals
 from ope.pde import PDESolution, pde_price, pde_solve
@@ -27,16 +36,23 @@ __all__ = [
     "OptionType",
     "PDESolution",
     "__version__",
+    "asian_geometric_price",
+    "asian_mc",
     "backward_step",
+    "barrier_mc",
+    "barrier_price",
     "call_price",
     "cpp",
     "crr_params",
     "crr_price",
     "d1_d2",
+    "gbm_paths",
     "gbm_terminal",
     "greeks",
     "implied_vol",
     "implied_vol_result",
+    "lookback_mc",
+    "lookback_price",
     "mc_delta",
     "mc_price",
     "mc_price_from_normals",
