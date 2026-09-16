@@ -19,6 +19,14 @@ from ope.exotics import (
     lookback_mc,
     lookback_price,
 )
+from ope.heston import (
+    HestonParams,
+    heston_cf,
+    heston_implied_vol,
+    heston_mc,
+    heston_paths,
+    heston_price,
+)
 from ope.implied_volatility import ImpliedVolResult, implied_vol, implied_vol_result
 from ope.monte_carlo import MCResult, gbm_terminal, mc_delta, mc_price, mc_price_from_normals
 from ope.pde import PDESolution, pde_price, pde_solve
@@ -31,6 +39,7 @@ __version__ = "0.1.0"
 
 __all__ = [
     "Greeks",
+    "HestonParams",
     "ImpliedVolResult",
     "MCResult",
     "OptionType",
@@ -49,6 +58,11 @@ __all__ = [
     "gbm_paths",
     "gbm_terminal",
     "greeks",
+    "heston_cf",
+    "heston_implied_vol",
+    "heston_mc",
+    "heston_paths",
+    "heston_price",
     "implied_vol",
     "implied_vol_result",
     "lookback_mc",
