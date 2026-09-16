@@ -118,3 +118,69 @@ def test_cpp_flag_gives_the_same_prices(capsys: pytest.CaptureFixture[str]) -> N
     numpy_line = capsys.readouterr().out.splitlines()[0]
     assert main(["american", *put, "--steps", "200", "--grid", "50", "--cpp"]) == 0
     assert capsys.readouterr().out.splitlines()[0] == numpy_line  # same tree price to 6 digits
+
+
+ATM = ["-S", "100", "-K", "100", "-T", "1", "-r", "0.05"]
+
+
+def test_asian_prints_the_cv_estimate_and_the_geometric_price(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    assert main(["asian", *ATM, "--sigma", "0.2", "--paths", "20000"]) == 0
+    out = capsys.readouterr().out
+    assert "5.940200" in out  # geometric closed form, 12 dates
+    assert "smaller std error" in out
+
+
+def test_barrier_prints_discrete_bgk_and_continuous(capsys: pytest.CaptureFixture[str]) -> None:
+    argv = ["barrier", *ATM, "--sigma", "0.2", "-H", "120", "--kind", "up-and-out"]
+    assert main([*argv, "--paths", "20000"]) == 0
+    out = capsys.readouterr().out
+    assert "1.176065" in out  # continuous closed form
+    assert "1.332070" in out  # bgk shift for 252 dates
+    # a barrier already crossed is a message, not a traceback
+    assert main(["barrier", *ATM, "--sigma", "0.2", "-H", "90", "--kind", "up-and-out"]) == 2
+    assert "already at or past" in capsys.readouterr().err
+
+
+def test_lookback_prints_the_closed_form(capsys: pytest.CaptureFixture[str]) -> None:
+    argv = ["lookback", "-S", "100", "-T", "1", "-r", "0.05", "--sigma", "0.2"]
+    assert main([*argv, "--paths", "5000", "--dates", "52"]) == 0
+    assert "17.216802" in capsys.readouterr().out
+
+
+def test_heston_prints_semi_analytical_mc_and_implied_vol(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    assert main(["heston", *ATM, "--paths", "5000", "--steps", "20"]) == 0
+    out = capsys.readouterr().out
+    assert "9.871330" in out
+    assert "0.184528" in out  # below the 20% average vol: the skew's atm dip
+    assert "violated" in out
+
+
+def test_tier5_plots_write_pngs(tmp_path: Path) -> None:
+    pytest.importorskip("matplotlib")
+    smile = tmp_path / "smile.png"
+    argv = ["plot-smile", "-S", "100", "-T", "1", "-r", "0.05", "--out", str(smile)]
+    assert main(argv) == 0
+    assert smile.stat().st_size > 10_000
+    barrier = tmp_path / "barrier.png"
+    argv = ["plot-barrier", *ATM, "--sigma", "0.2", "-H", "120", "--kind", "up-and-out"]
+    assert main([*argv, "--out", str(barrier)]) == 0
+    assert barrier.stat().st_size > 10_000
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["plot-smile", "-S", "100", "-T", "1", "-r", "0.05"],
+        ["plot-barrier", *ATM, "--sigma", "0.2", "-H", "120", "--kind", "up-and-out"],
+    ],
+)
+def test_tier5_plots_without_matplotlib(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], argv: list[str]
+) -> None:
+    monkeypatch.setitem(sys.modules, "ope.plots", None)
+    assert main(argv) == 1
+    assert "matplotlib" in capsys.readouterr().err

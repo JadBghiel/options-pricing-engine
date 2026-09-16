@@ -1,4 +1,4 @@
-"""plots for black scholes, monte carlo, trees and the pde, needs the plots extra (matplotlib)"""
+"""plots for black scholes, monte carlo, trees, the pde, exotics and heston (needs matplotlib)"""
 
 import math
 
@@ -6,6 +6,8 @@ import numpy as np
 from matplotlib.figure import Figure
 
 from ope.black_scholes import OptionType, greeks, price
+from ope.exotics import BarrierKind, barrier_mc, barrier_price
+from ope.heston import HestonParams, heston_implied_vol
 from ope.monte_carlo import mc_price
 from ope.pde import pde_solve
 from ope.trees import crr_price
@@ -185,4 +187,112 @@ def plot_exercise_boundary(
     )
     ax.grid(alpha=0.3)
     ax.legend(loc="lower left" if option == "put" else "upper left")
+    return fig
+
+
+def plot_barrier_monitoring(
+    option: OptionType,
+    S: float,
+    K: float,
+    H: float,
+    T: float,
+    r: float,
+    sigma: float,
+    q: float = 0.0,
+    *,
+    kind: BarrierKind,
+    dates: tuple[int, ...] = (4, 12, 26, 52, 126, 252),
+    n_paths: int = 200_000,
+    seed: int = 0,
+) -> Figure:
+    """knock out price vs how often the barrier is checked, against the continuous closed form
+
+    left: discretely monitored monte carlo (95% intervals), the bgk approximation and the
+    continuous price. right: the gap to the continuous price on log scales, slope -1/2
+    """
+    ns = np.array(dates)
+    res = [
+        barrier_mc(
+            option, S, K, H, T, r, sigma, q, kind=kind, n_dates=int(n), n_paths=n_paths,
+            rng=seed + k,
+        )
+        for k, n in enumerate(ns)
+    ]  # fmt: skip
+    est = np.array([x.estimate for x in res])
+    se = np.array([x.std_error for x in res])
+    bgk = [barrier_price(option, S, K, H, T, r, sigma, q, kind=kind, n_dates=int(n)) for n in ns]
+    cont = barrier_price(option, S, K, H, T, r, sigma, q, kind=kind)
+    vanilla = float(price(option, S, K, T, r, sigma, q))
+
+    fig = Figure(figsize=(12, 4.5), layout="constrained")
+    ax_p, ax_gap = fig.subplots(1, 2)
+    ax_p.errorbar(ns, est, yerr=1.96 * se, fmt="o", capsize=3, label="checked on n dates (MC)")
+    ax_p.plot(ns, bgk, "--", color="tab:orange", label="continuous formula, shifted barrier (BGK)")
+    ax_p.axhline(cont, color="crimson", label=f"checked continuously {cont:.4f}")
+    ax_p.set_xscale("log")
+    ax_p.set_xlabel("number of monitoring dates n")
+    ax_p.set_ylabel(f"{kind} {option} price")
+    # the vanilla goes in the title: as a line it would squash the curve at the bottom
+    ax_p.set_title(f"fewer checks, fewer knock outs, higher price (no barrier: {vanilla:.2f})")
+    ax_p.legend(fontsize=8)
+    ax_gap.loglog(ns, est - cont, "o-", label="MC minus continuous")
+    ax_gap.loglog(ns, (est[0] - cont) * np.sqrt(ns[0] / ns), ":", color="gray", label="slope -1/2")
+    ax_gap.set_xlabel("number of monitoring dates n")
+    ax_gap.set_ylabel("gap to the continuous price")
+    ax_gap.set_title("the gap shrinks like 1/sqrt(n)")
+    ax_gap.legend()
+    for ax in (ax_p, ax_gap):
+        ax.grid(alpha=0.3, which="both")
+    fig.suptitle(
+        f"Discrete vs continuous barrier ({kind} {option}, S={S:g}, K={K:g}, H={H:g}, T={T:g}, "
+        f"r={r:g}, sigma={sigma:g})"
+    )
+    return fig
+
+
+def plot_heston_smile(
+    S: float,
+    T: float,
+    r: float,
+    params: HestonParams,
+    q: float = 0.0,
+    *,
+    moneyness: tuple[float, float] = (0.6, 1.4),
+    points: int = 25,
+    rhos: tuple[float, ...] = (-0.7, 0.0, 0.7),
+) -> Figure:
+    """implied vol of heston prices vs strike, against the flat line black scholes assumes
+
+    left: the smile of params. right: the same params w/ each correlation in rhos, rho tilts it
+    """
+    strikes = S * np.linspace(moneyness[0], moneyness[1], points)
+    flat = params.effective_vol(T)
+    fig = Figure(figsize=(12, 4.5), layout="constrained")
+    ax_s, ax_rho = fig.subplots(1, 2, sharey=True)
+    vols = np.asarray(heston_implied_vol(S, strikes, T, r, params, q))
+    ax_s.plot(strikes, 100 * vols, "o-", ms=3, label="Heston")
+    ax_s.axhline(
+        100 * flat,
+        color="gray",
+        linestyle="--",
+        label=f"Black-Scholes, {100 * flat:.1f}% everywhere",
+    )
+    ax_s.set_title(
+        f"Heston smile (v0={params.v0:g}, kappa={params.kappa:g}, theta={params.theta:g}, "
+        f"xi={params.xi:g}, rho={params.rho:g})",
+        fontsize=10,
+    )
+    for rho in rhos:
+        p = HestonParams(params.v0, params.kappa, params.theta, params.xi, rho)
+        ax_rho.plot(strikes, 100 * np.asarray(heston_implied_vol(S, strikes, T, r, p, q)),
+                    label=f"rho = {rho:g}")  # fmt: skip
+    ax_rho.axhline(100 * flat, color="gray", linestyle="--")
+    ax_rho.set_title("rho tilts the smile: < 0 skew down, > 0 skew up", fontsize=10)
+    for ax in (ax_s, ax_rho):
+        ax.axvline(S * math.exp((r - q) * T), color="gray", linewidth=0.8, linestyle=":")
+        ax.set_xlabel("strike K (dotted: the forward)")
+        ax.grid(alpha=0.3)
+        ax.legend()
+    ax_s.set_ylabel("implied volatility (%)")
+    fig.suptitle(f"Implied volatility of Heston prices vs flat Black-Scholes (S={S:g}, T={T:g})")
     return fig
