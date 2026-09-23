@@ -173,3 +173,57 @@ $$\text{speedup}(n) = \frac{1}{s + (1 - s)/n}$$
   order, not from luck.
 - One test suite for two implementations: same signatures, a fixture that swaps the module.
 
+
+## Tier 5: Exotics and Heston
+
+### Key formulas
+
+**Geometric Asian** over n dates T/n, ..., T: log G is normal, so Black-Scholes applies to it.
+
+$$\mathbb{E}[\log G] = \log S + \left(r - q - \tfrac{1}{2}\sigma^2\right)T\,\frac{n+1}{2n}, \qquad \operatorname{Var}[\log G] = \sigma^2 T\,\frac{(n+1)(2n+1)}{6n^2}$$
+
+**Brownian bridge crossing** between two dates, a and b the distances of log S to log H at both
+ends: the path touched H in between with probability
+
+$$p = \exp\left(-\frac{2ab}{\sigma^2 \Delta t}\right)$$
+
+**BGK shift:** a barrier checked every Δt ≈ a continuous barrier moved away from spot,
+H → H·exp(±0.5826·σ·√Δt).
+
+**Heston:**
+
+$$dS = (r-q)S\,dt + \sqrt{v}\,S\,dW_1, \qquad dv = \kappa(\theta - v)\,dt + \xi\sqrt{v}\,dW_2, \qquad dW_1\,dW_2 = \rho\,dt$$
+
+Full truncation Euler: v⁺ = max(v, 0) in every term, the stored v may stay negative.
+
+$$v_{t+\Delta t} = v_t + \kappa(\theta - v_t^+)\Delta t + \xi\sqrt{v_t^+\Delta t}\,Z_v$$
+
+**Semi-analytical price:** the Black-Scholes shape with Heston's probabilities, each one integral
+of the characteristic function φ (Gil-Pelaez).
+
+$$C = S e^{-qT} P_1 - K e^{-rT} P_2, \qquad P_2 = \frac{1}{2} + \frac{1}{\pi}\int_0^\infty \operatorname{Re}\left[\frac{e^{-iu\log K}\,\varphi(u)}{iu}\right] du$$
+
+### Gotchas
+
+- A barrier checked daily is a different contract from one watched continuously: the up-and-out
+  call at H = 120 is worth 1.32 against 1.18 (12.5% and 31 standard errors apart). Check each
+  price against a reference for the same contract.
+- Euler bias isn't noise: at 2 steps a year the Heston price is 83 standard errors off. More
+  paths shrink the error bar, only more steps shrink the bias.
+- With the Feller condition violated the Euler variance goes negative on 8% to 37% of steps:
+  full truncation, never `sqrt` of a negative.
+- Heston's 1993 characteristic function has a complex log that jumps by 2π at long maturities
+  (16.39 instead of 29.09 at 5 years, with no error message). Use the "Little Heston Trap" form.
+- Below ξ ≈ 1e-5 the characteristic function loses digits (κθ/ξ² times a bracket near 0).
+- Tolerances after many steps: 252 additions of the log drift round to about 1e-12 relative.
+
+### Takeaways
+
+- For GBM, simulating date by date is exact: the monitoring dates are part of the contract, not
+  a numerical choice. For Heston the step is a numerical choice with a bias.
+- A control variate is as good as its correlation ρ, the gain is 1/√(1 − ρ²): 0.9996 for the
+  geometric Asian gives 36x, the stock's 0.96 for Hull's call gave Tier 2's 3.6x.
+- Discrete monitoring misses crossings between dates, so a discrete knock-out is worth more and a
+  discrete lookback less; the gap shrinks like 1/√n.
+- Heston's smile comes from random volatility; ρ < 0 tilts it into the equity skew, and the
+  at-the-money vol (18.5%) falls below the 20% average vol.

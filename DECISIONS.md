@@ -180,3 +180,55 @@ gap 1.1e-13), the tree to 1e-13, Monte Carlo on the same normals to 1e-11; Philo
 against NumPy and against the Random123 known answers; same bits on 1 to 8 threads. 196 Python
 tests (99% coverage) and 20 GoogleTest tests, clean under ASan, UBSan and TSan. Benchmarks: tree
 30x faster than NumPy, Black-Scholes and Monte Carlo about 3x with 8 threads (README).
+
+## T5. Exotics and Heston
+
+**Chosen:**
+- exotics on GBM simulated date by date with the exact log step, so the only "steps" are the
+  contract's monitoring dates
+- the geometric Asian (closed form) as control variate for the arithmetic Asian
+- barrier and lookback priced both ways: checked on dates (the real contract) and watched
+  continuously (closed forms, and Monte Carlo through the Brownian bridge); the BGK shift links
+  the two
+- Heston by full-truncation Euler (log-Euler for the stock), and semi-analytically through the
+  characteristic function in the "Little Heston Trap" form, P1 and P2 integrated to infinity
+- the smile from Heston prices inverted with the Tier 1 implied vol solver, on the
+  out-of-the-money side
+- Python and NumPy only, no C++ port this tier
+
+**Why:**
+- **Exact steps for GBM.** The gap between a daily and a continuous barrier is then a property of
+  the contract, never a discretization error. Heston has no exact step, so there the step count is
+  a numerical choice and its bias is measured as such.
+- **The geometric control variate.** Its payoffs have a correlation of 0.9996 with the arithmetic
+  ones: 36x smaller standard error at equal paths, against 3.6x for the Tier 2 stock control.
+- **Bridge instead of fine steps.** Multiplying by the exact survival probability gives the
+  continuously watched price from any number of dates, with no extra noise, so the continuous
+  closed forms can be tested against a simulation of the same contract.
+- **Full truncation.** Among the simple fixes for a negative Euler variance it has the smallest
+  bias (Lord, Koekkoek and van Dijk), and it keeps the discounted stock an exact martingale.
+- **The trap form.** Heston's original formula gives a wrong price at long maturities (16.39
+  instead of 29.09 at 5 years) because its complex log crosses a branch cut; the 2007 form is the
+  same function without the jump, and it can be integrated to infinity without overflow.
+- **P1 and P2.** The price keeps the Black-Scholes shape S·P1 − K·e^(−rT)·P2, which makes it
+  explainable; Lewis's single integral is kept in the tests as the independent check.
+- **No C++.** Tier 6 calibrates with the semi-analytical price, not the Monte Carlo, so Heston paths
+  aren't a hot path yet; a 1,000,000-path, 64-step run takes 4 to 6 s in NumPy on this laptop.
+
+**Considered and ruled out:**
+- *Reflection (|v|) or partial truncation* for the variance: more bias than full truncation.
+- *The QE scheme (Andersen 2008)*: less bias per step, but far more code to explain; the bias is
+  measured and controlled with steps instead.
+- *Heston's original characteristic function*: kept only to show the jump.
+- *Carr-Madan FFT* for the semi-analytical price: prices a whole strike grid at once, worth it for
+  calibration speed in Tier 6, not needed to validate one price.
+- *Checking discretely monitored prices against the continuous formulas*: wrong reference, off by
+  12.5% (31 standard errors) for the daily up-and-out call.
+- *Fixed-strike lookbacks and knock-in barriers*: knock-ins follow from in-out parity (vanilla =
+  in + out), fixed strikes add nothing new to the lesson.
+
+**Validated:** every closed form against a simulation of the same contract, with 95% intervals
+holding it 92 to 96% of the time over 200 seeds; Heston's price against Lewis's integral to 1e-7
+from 1 month to 10 years; Heston → Black-Scholes linearly as ξ → 0 (3e-5 at ξ = 1e-4); the Monte
+Carlo's 4-step bias over 10 standard errors and its 64-step coverage at 93%. 269 tests, 99%
+branch coverage.

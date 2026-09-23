@@ -12,11 +12,12 @@ slower method that is already trusted).
 
 I documented my full learning process in Notion, reach out privately if you wish to consult it.
 
-> **Status:** Tiers 0 to 4 are built and validated locally: Black-Scholes with Greeks and
+> **Status:** Tiers 0 to 5 are built and validated locally: Black-Scholes with Greeks and
 > implied vol, Monte Carlo with variance reduction, American options by binomial tree and
-> Crank-Nicolson PDE, and a multithreaded C++20 core that matches the Python to rounding.
-> 196 Python tests (99% branch coverage) and 20 C++ tests, clean under ASan, UBSan and TSan.
-> Write-up: [REPORT.md](REPORT.md). **Tier 5 (exotics and Heston) is next.**
+> Crank-Nicolson PDE, a multithreaded C++20 core that matches the Python to rounding, and
+> exotic options (Asian, barrier, lookback) plus the Heston stochastic volatility model.
+> 269 Python tests (99% branch coverage) and 20 C++ tests, clean under ASan, UBSan and TSan.
+> Write-up: [REPORT.md](REPORT.md). **Tier 6 (calibration to market data) is next.**
 
 ---
 
@@ -80,7 +81,7 @@ The engine doesn't places or modifies orders. The IBKR gateaway code is read onl
 | 2 | The Tier 1 price inside the 95% confidence interval about 95% of the time (checked over 200 seeds per method). Reported standard errors match the real spread across seeds. Variance reduction cuts the standard error 2x to 12x at equal N. Monte Carlo deltas (three ways) vs. the analytical delta within their standard error |
 | 3 | Tree and PDE converge to Tier 1 on European payoffs (1e-4 and second order). American puts from tree and PDE agree to 0.05% of the price. American call on a non-dividend stock equals the European call exactly; with an 8% dividend yield early exercise is worth 2.54 |
 | 4 | The Python implementation on identical inputs: 1e-11 relative on 100,000 random options (largest gap 1.1e-13), the same tree to 1e-13, the same Monte Carlo on the same normals to 1e-11. The C++ generator matches NumPy's Philox bit for bit, and a seed gives the same bits on 1 to 8 threads. Clean ASan, UBSan and TSan builds |
-| 5 | The geometric Asian closed form. Heston converging to Black-Scholes as vol-of-vol goes to zero |
+| 5 | Every closed form against a simulation of the same contract, with the 95% interval holding it 92 to 96% of the time over 200 seeds: the geometric Asian, the continuous barrier and lookback (Brownian bridge), and the Heston semi-analytical price against full-truncation Monte Carlo. The semi-analytical price against an independent integral (Lewis) to 1e-7, and Heston converging linearly to Black-Scholes as vol-of-vol goes to zero (gap 3e-5 at 1e-4) |
 | 6 | Fit errors per maturity, reproducible from a cached chain snapshot |
 | 7 | Read-only behaviour on the live account. The MCP tools are listed and callable from the MCP inspector |
 
@@ -259,6 +260,68 @@ The Monte Carlo runs on any number of threads and gives the same bits for a give
 number i always comes from the same Philox block, and the paths are summed in fixed chunks that
 are merged in order.
 
+### Tier 5: Exotics and Heston
+
+```python
+from ope import HestonParams, asian_mc, barrier_mc, barrier_price, heston_implied_vol, heston_mc
+from ope import heston_price, lookback_price
+
+# arithmetic Asian on 12 monthly averages, the geometric Asian as control variate
+asian_mc("call", 100, 100, 1, 0.05, 0.2, n_dates=12, control_variate=True, rng=0)  # 6.1567
+
+# up-and-out call: checked daily vs watched continuously
+barrier_mc("call", 100, 100, 120, 1, 0.05, 0.2, kind="up-and-out", n_dates=252, rng=0)  # 1.3241
+barrier_price("call", 100, 100, 120, 1, 0.05, 0.2, kind="up-and-out")  # 1.1761 continuous
+barrier_price("call", 100, 100, 120, 1, 0.05, 0.2, kind="up-and-out", n_dates=252)  # 1.3321 BGK
+lookback_price("call", 100, 1, 0.05, 0.2)  # 17.2168, floating strike
+
+# Heston: v0, kappa, theta, xi (vol of vol), rho
+p = HestonParams(v0=0.04, kappa=1.5, theta=0.04, xi=0.6, rho=-0.7)
+heston_price("call", 100, 100, 1, 0.05, p)  # 9.8713, characteristic function
+heston_mc("call", 100, 100, 1, 0.05, p, n_steps=64, rng=0)  # full-truncation Euler
+heston_implied_vol(100, [80, 100, 120], 1, 0.05, p)  # 24.6%, 18.5%, 13.8%: the skew
+```
+
+```bash
+uv run ope asian -S 100 -K 100 -T 1 -r 0.05 --sigma 0.2
+uv run ope barrier -S 100 -K 100 -T 1 -r 0.05 --sigma 0.2 -H 120 --kind up-and-out
+uv run ope heston -S 100 -K 100 -T 1 -r 0.05 --v0 0.04 --kappa 1.5 --theta 0.04 --xi 0.6 --rho -0.7
+uv run ope plot-smile -S 100 -T 1 -r 0.05 --out smile.png
+```
+
+**Walkthrough:** [notebooks/tier5_exotics_heston.ipynb](notebooks/tier5_exotics_heston.ipynb): paths
+instead of end points, the geometric control variate, a barrier crossed between two checks, the
+Heston paths and full truncation, the branch-cut trap drawn, bias vs. noise, and the smile.
+
+The geometric Asian's control variate cuts the standard error **36x** at equal paths (the
+arithmetic and geometric payoffs of a path have a correlation of 0.9996), worth about 1,300 times
+the paths.
+
+**Discrete vs. continuous monitoring.** A barrier checked on dates misses the crossings in
+between, so it knocks out less and is worth more. The continuous closed form is the wrong
+reference for a contract checked daily:
+
+| Up-and-out call (S=100, K=100, H=120, T=1, r=5%, σ=20%) | Checked on n dates (MC, 1M paths) | BGK approximation | Gap to continuous |
+|---|---:|---:|---:|
+| n = 12 (monthly) | 1.8495 ± 0.0041 | 1.9706 | +57% |
+| n = 52 (weekly) | 1.5031 ± 0.0037 | 1.5328 | +28% |
+| n = 252 (daily) | 1.3228 ± 0.0034 | 1.3321 | +12.5% |
+| continuous (closed form) | 1.1761 | | |
+
+The gap shrinks like 1/√n. The down-and-out call at H=90 is less sensitive (+3.2% daily),
+because it dies where its payoff is small.
+
+![Barrier price against the number of monitoring dates](docs/img/tier5_barrier_monitoring.png)
+
+**Heston.** The Monte Carlo has a bias from its time step that more paths don't remove: +1.14
+at 2 steps a year, about +0.03 at 64, on a call worth 9.8713. With the vol of vol violating the
+Feller condition, the Euler variance goes negative on 8% to 37% of steps; full truncation uses
+max(v, 0) wherever v is needed. The semi-analytical price uses the "Little Heston Trap" form:
+Heston's original formula prices a 5-year call at 16.39 instead of 29.09, because its complex
+logarithm jumps across a branch cut.
+
+![Implied volatility of Heston prices against the flat Black-Scholes volatility](docs/img/tier5_heston_smile.png)
+
 ---
 
 ## Benchmarks
@@ -317,6 +380,6 @@ Parts of this projects are also based on external sources, such as books I read 
 | 2 | Glasserman, *Monte Carlo Methods in Financial Engineering* |
 | 3 | Hull: binomial trees and numerical procedures. Wilmott, *Paul Wilmott Introduces Quantitative Finance* (finite differences) |
 | 4 | Salmon et al., *Parallel Random Numbers: As Easy as 1, 2, 3* (2011, Philox). Chan, Golub and LeVeque, *Algorithms for Computing the Sample Variance* (1983). Box and Muller (1958) |
-| 5 | Heston (1993). Albrecher et al., *The Little Heston Trap* (2007) |
+| 5 | Hull: exotic options. Heston (1993). Albrecher et al., *The Little Heston Trap* (2007). Lord, Koekkoek and van Dijk, *A Comparison of Biased Simulation Schemes for Stochastic Volatility Models* (2010, full truncation). Broadie, Glasserman and Kou, *A Continuity Correction for Discrete Barrier Options* (1997). Lewis, *Option Valuation under Stochastic Volatility* (2000) |
 | 6 | Gatheral, *The Volatility Surface*. Gatheral and Jacquier, *Arbitrage-free SVI volatility surfaces* (2014) |
 
