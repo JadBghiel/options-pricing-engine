@@ -2,7 +2,8 @@
 
 A technical write-up of the core engine (Tiers 1 to 3) and its C++ port (Tier 4): what each
 method does, how it was validated, how it converges, what the C++ core buys, and where it all
-stops being trustworthy. Updated after Tiers 4 and 6.
+stops being trustworthy. Updated after Tiers 4 and 6, with a short note on Tier 5's exotics and
+Heston model (section 5) because they move the limits.
 
 All numbers come from the code in this repository and can be reproduced with the commands and
 notebooks referenced below. The reference case throughout is Hull's call, S = 42, K = 40,
@@ -146,13 +147,39 @@ while the workers run.
 
 ![Monte Carlo time and speedup against the number of threads](docs/img/tier4_thread_scaling.png)
 
-## 5. Limits
+## 5. Exotics and Heston (Tier 5, short)
 
-- **The model.** Everything assumes constant volatility, no jumps and frictionless continuous
-  hedging. Real option prices show a volatility smile; Tier 5 (Heston) and Tier 6 (calibration)
-  address it.
-- **Monte Carlo is scalar and European.** One option per call, and no early exercise: pricing
-  American options by simulation needs regression methods (Longstaff-Schwartz), not implemented.
+**Exotics.** Asian, barrier and lookback options are simulated date by date with the exact GBM log
+step, so the monitoring dates are a contract term, never a discretization error. The arithmetic
+Asian uses the geometric Asian (closed form) as control variate: 36x smaller standard error at
+equal paths. Barrier and lookback have continuous closed forms, checked against Monte Carlo with
+the Brownian bridge between dates (95% intervals hold them 92 to 96% of the time over 200 seeds).
+Checked daily, the up-and-out call (S = K = 100, H = 120) is worth 1.3228 against 1.1761 watched
+continuously: a 12.5% gap that shrinks like 1/√n and that the BGK shifted barrier predicts within
+0.7%.
+
+**Heston.** The semi-analytical price uses the characteristic function in the "Little Heston
+Trap" form (Heston's original form gives 16.39 instead of 29.09 for a 5-year call), checked
+against Lewis's integral to 1e-7. Full-truncation Euler Monte Carlo agrees with it within its
+standard error at 64 steps; its bias is +1.14 at 2 steps and about +0.03 at 64. As the vol of vol
+goes to zero, Heston converges linearly to Black-Scholes at the average volatility. With
+ρ = −0.7 the implied volatility runs from 27.8% at K = 70 to 13.3% at K = 130.
+
+## 6. Limits
+
+- **The model.** Tiers 1 to 4 assume constant volatility, no jumps and frictionless continuous
+  hedging. Heston (Tier 5) produces a smile but has no jumps, so it can't fit the steep skew of
+  very short maturities; its parameters are still hand-picked until Tier 6 calibrates them.
+- **Monte Carlo has no early exercise.** Exotics and Heston are European-style: American options by
+  simulation need regression methods (Longstaff-Schwartz), not implemented.
+- **Heston Monte Carlo is first order in the time step.** The bias is measured, not removed: choose
+  the steps for the precision needed (64 steps leave about 0.3% on a 1-year at-the-money call).
+  Andersen's QE scheme would cut it per step.
+- **Heston's semi-analytical price** is one adaptive integral pair per strike (4 to 5 ms): fine for
+  validation, slow for calibrating thousands of quotes (Carr-Madan FFT is the Tier 6 option).
+  Prices under about 1e-9 are integration noise, and below ξ ≈ 1e-5 the formula loses digits.
+- **Barriers:** single knock-out barriers only (knock-ins via in-out parity), and the BGK shift
+  is an approximation (within 1% of daily monitoring in the tests).
 - **Implied volatility is scalar** and, far out of the money and close to expiry, Newton barely
   beats bisection; Newton on log price would fix it if chain inversion gets slow (Tier 6).
 - **PSOR is pure Python.** An American PDE price takes about 1.3 to 1.5 s on a 400 × 400 grid. Tier 4
@@ -165,12 +192,12 @@ while the workers run.
   it looks like a staircase unless the grid is fine.
 - **Discrete dividends** are not modelled, only a continuous yield q.
 
-## 6. Reproduce
+## 7. Reproduce
 
 ```bash
 uv sync --all-extras                            # also compiles the C++ core (needs a C++20 compiler)
-uv run pytest                                   # 196 tests, Python and C++
-uv run pytest --nbmake notebooks --no-cov       # the four walkthrough notebooks
+uv run pytest                                   # 269 tests, Python and C++
+uv run pytest --nbmake notebooks --no-cov       # the five walkthrough notebooks
 cmake -S . -B build/cpp -DOPE_BUILD_TESTS=ON && cmake --build build/cpp && ctest --test-dir build/cpp
 bash benchmarks/run.sh                          # every benchmark number, then benchmarks/RESULTS.md
 uv run ope mc -S 42 -K 40 -T 0.5 -r 0.1 --sigma 0.2 --antithetic --control
