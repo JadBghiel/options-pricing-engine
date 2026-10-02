@@ -30,6 +30,11 @@ dev = [
 plots = [
     "matplotlib>=3.8",
 ]
+# only to pull a chain (tier 6), the library reads a saved snapshot w/o them
+market = [
+    "ib_async>=2.1",  # ibkr, read only
+    "yfinance>=0.2.40",  # fallback when the gateway is down
+]
 
 [project.scripts]
 ope = "ope.cli:main"
@@ -87,6 +92,11 @@ ignore = [
 python_version = "3.12"
 strict = true
 files = ["src/ope"]
+
+[[tool.mypy.overrides]]
+# yfinance ships no type hints
+module = ["yfinance"]
+ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
