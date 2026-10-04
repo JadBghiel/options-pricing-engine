@@ -1,0 +1,25 @@
+{
+  "source": "synthetic",
+  "symbol": "SPX",
+  "trading_class": "SPXW",
+  "as_of": "2026-01-09T21:15:00+00:00",
+  "spot_hint": 5000.0,
+  "heston": [
+    "v0=0.02",
+    "kappa=2.5",
+    "theta=0.035",
+    "xi=0.8",
+    "rho=-0.75"
+  ],
+  "r": 0.045,
+  "q": 0.013,
+  "seed": 0,
+  "junk": [
+    "one sided: 6",
+    "crossed: 4",
+    "stale: 5",
+    "wide: 5",
+    "no interest: 6",
+    "out of bounds: 3"
+  ]
+}
