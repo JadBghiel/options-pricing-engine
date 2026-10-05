@@ -33,6 +33,7 @@ from ope.implied_volatility import ImpliedVolResult, implied_vol, implied_vol_re
 from ope.monte_carlo import MCResult, gbm_terminal, mc_delta, mc_price, mc_price_from_normals
 from ope.pde import PDESolution, pde_price, pde_solve
 from ope.surface import Forward, Surface, clean_chain, implied_forwards, iv_surface
+from ope.svi import SVIFit, SVIParams, calendar_checks, fit_svi, fit_svi_surface
 from ope.synthetic import synthetic_chain
 from ope.trees import backward_step, crr_params, crr_price
 
@@ -51,6 +52,8 @@ __all__ = [
     "MCResult",
     "OptionType",
     "PDESolution",
+    "SVIFit",
+    "SVIParams",
     "Surface",
     "__version__",
     "asian_geometric_price",
@@ -58,6 +61,7 @@ __all__ = [
     "backward_step",
     "barrier_mc",
     "barrier_price",
+    "calendar_checks",
     "calibrate_heston",
     "call_price",
     "clean_chain",
@@ -65,6 +69,8 @@ __all__ = [
     "crr_params",
     "crr_price",
     "d1_d2",
+    "fit_svi",
+    "fit_svi_surface",
     "gbm_paths",
     "gbm_terminal",
     "greeks",
