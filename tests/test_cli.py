@@ -184,3 +184,64 @@ def test_tier5_plots_without_matplotlib(
     monkeypatch.setitem(sys.modules, "ope.plots", None)
     assert main(argv) == 1
     assert "matplotlib" in capsys.readouterr().err
+
+
+FIXTURE = str(Path(__file__).parent / "fixtures" / "spx_synthetic.csv")
+
+
+def test_surface_prints_the_report_and_the_forwards(capsys: pytest.CaptureFixture[str]) -> None:
+    assert main(["surface", FIXTURE]) == 0
+    out = capsys.readouterr().out
+    assert "synthetic snapshot of SPX" in out
+    assert "crossed or locked" in out and "kept" in out
+    assert "20270108" in out  # the 1 year forward row
+
+
+def test_svi_prints_the_fits_and_the_calendar(capsys: pytest.CaptureFixture[str]) -> None:
+    assert main(["svi", FIXTURE]) == 0
+    out = capsys.readouterr().out
+    assert out.count("calendar") == 6 and "ARBITRAGE" not in out
+
+
+def test_calibrate_prints_params_feller_and_errors(capsys: pytest.CaptureFixture[str]) -> None:
+    assert main(["calibrate", FIXTURE, "--starts", "2"]) == 0
+    out = capsys.readouterr().out
+    assert "best: v0 0.0200" in out
+    assert "violated" in out and "all quotes: rms" in out
+
+
+def test_tier6_plots_write_pngs(tmp_path: Path) -> None:
+    pytest.importorskip("matplotlib")
+    for cmd in ("plot-surface", "plot-term"):
+        out = tmp_path / f"{cmd}.png"
+        extra = ["--starts", "1"] if cmd == "plot-surface" else []
+        assert main([cmd, FIXTURE, *extra, "--out", str(out)]) == 0
+        assert out.stat().st_size > 10_000
+
+
+@pytest.mark.parametrize("cmd", ["plot-surface", "plot-term"])
+def test_tier6_plots_without_matplotlib(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], cmd: str
+) -> None:
+    monkeypatch.setitem(sys.modules, "ope.plots", None)
+    assert main([cmd, FIXTURE]) == 1
+    assert "matplotlib" in capsys.readouterr().err
+
+
+def test_fetch_chain_passes_the_connection_settings(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    import ope.market
+    from ope.chain import load_snapshot
+
+    seen: dict[str, object] = {}
+
+    def fake_pull(source: str, **kw: object) -> object:
+        seen.update(source=source, **kw)
+        return load_snapshot(FIXTURE)
+
+    monkeypatch.setattr(ope.market, "pull_chain", fake_pull)
+    argv = ["fetch-chain", "--source", "ibkr", "--port", "7497", "--out-dir", str(tmp_path)]
+    assert main(argv) == 0
+    assert seen["source"] == "ibkr" and seen["port"] == 7497 and seen["host"] is None
+    assert "420 quotes, 7 expiries" in capsys.readouterr().out
