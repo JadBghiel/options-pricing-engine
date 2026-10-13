@@ -232,3 +232,65 @@ holding it 92 to 96% of the time over 200 seeds; Heston's price against Lewis's 
 from 1 month to 10 years; Heston → Black-Scholes linearly as ξ → 0 (3e-5 at ξ = 1e-4); the Monte
 Carlo's 4-step bias over 10 standard errors and its 64-step coverage at 93%. 269 tests, 99%
 branch coverage.
+
+## T6. Calibration to market data
+
+**Chosen:**
+- SPXW (S&P 500 index options, European, cash-settled at the 4pm close on every expiry): put-call
+  parity and the European Heston formula apply exactly
+- a read-only IBKR fetcher on `ib_async` that only does the API handshake, streams delayed data
+  in batches of 50 and writes every batch to `data/` before reading it; yfinance as fallback;
+  both in an optional `market` extra
+- no real quotes in git: a synthetic SPX-like chain, priced by the library with known parameters
+  and planted bad quotes, is the committed fixture for the tests, the notebook and CI
+- the forward and discount factor per expiry from a regression of C − P on K, weighted by
+  1 / spread, with bad pairs removed one at a time
+- SVI per expiry fitted in vol space (weights 1 / bid-ask spread in vol), Lee's wing bound in
+  every fit, butterfly (g ≥ 0) and calendar checks on the quoted range, a penalty only when the
+  plain fit breaks one
+- Heston calibrated to all expiries at once, on one shared quadrature grid per expiry, residuals
+  = price error / vega, 8 seeded Sobol starting points, all reported
+
+**Why:**
+- **SPXW, not SPY.** SPY options are American, so inverting them with a European pricer is wrong
+  near early exercise. Using SPXW only (not the morning-settled monthly SPX) gives every expiry the
+  same settlement time.
+- **The forward from the options.** On the real snapshot the index level IBKR returned was out of
+  sync with the 16:15 option quotes: with it, the 1-week dividend yield came out at −10%. Parity
+  needs no spot, no r and no q.
+- **The bare handshake.** `ib_async`'s `connect()` requests the account's positions on every
+  connection, even with its "fetch nothing" flag (read in its source). `client.connect` does only
+  the handshake, and market data works on it the same.
+- **Vol space and 1 / spread weights.** A price error means very different things at the money
+  and in the wings; an error in vol points divided by the bid-ask width in vol says how far
+  outside what the market itself knows the fit is.
+- **Checks on the quoted range.** Inside the quoted strikes every plain real fit was already
+  arbitrage-free. Penalizing far outside them (where a 1-week fit reached g = −86) bent the fits
+  for nothing and pushed later expiries above junk extrapolations.
+- **The shared grid.** `heston_price` costs 4 to 9 ms per strike; the grid prices an expiry's
+  whole strike set in 0.7 to 1.6 ms (110 to 210 times faster), within 1e-8 × F of `heston_price` (1e-4 vol points), with
+  nodes that follow the oscillation of the integrand. No C++ needed: the hot loop is already a
+  NumPy matrix product.
+
+**Considered and ruled out:**
+- *SPY or single stocks*: American exercise.
+- *Assuming r and q* (or a rate curve) with the index level: wrong when the level and the quotes
+  are not simultaneous, which is the normal case after the close.
+- *Committing a small trimmed real snapshot*: not allowed by the data agreement, whatever the size.
+- *Dropping every zero-volume quote*: removed 57% of the real two-sided quotes, many of them tight.
+- *Treating a missing open interest as zero*: it arrives after the quote and was missing on half
+  the 9-month quotes.
+- *One robust pass on the parity line*: a bad pair tilts the first line, and 5 good pairs were
+  dropped for 1 bad one; one at a time drops only the bad ones.
+- *Checking SVI arbitrage on a wide fixed range*: see above. The wide-range result is still
+  reported as a flag.
+- *Carr-Madan FFT or COS* for Heston: both fine and fast, but new machinery (a damping parameter,
+  a truncation range); the shared grid is the Tier 5 formula with a different integral.
+- *A C++ port of the calibration*: the whole real calibration takes 4 to 7 seconds.
+
+**Validated:** on the synthetic chain, every planted bad quote caught by its own filter (checked
+by identity), the forward within 1 bp over 10 seeds, SVI exact without noise and within 0.3 vol
+points of the true curve with noise, Heston back to its parameters from all 8 starts (κ 2.48 for
+2.5, ξ 0.797 for 0.8), the grid pricer within 1e-8 × F of `heston_price`. On the real snapshot:
+the fit error per expiry, and the same parameters bit for bit when rerun. 369 tests, 99% branch
+coverage.

@@ -12,12 +12,13 @@ slower method that is already trusted).
 
 I documented my full learning process in Notion, reach out privately if you wish to consult it.
 
-> **Status:** Tiers 0 to 5 are built and validated locally: Black-Scholes with Greeks and
+> **Status:** Tiers 0 to 6 are built and validated locally: Black-Scholes with Greeks and
 > implied vol, Monte Carlo with variance reduction, American options by binomial tree and
-> Crank-Nicolson PDE, a multithreaded C++20 core that matches the Python to rounding, and
-> exotic options (Asian, barrier, lookback) plus the Heston stochastic volatility model.
-> 269 Python tests (99% branch coverage) and 20 C++ tests, clean under ASan, UBSan and TSan.
-> Write-up: [REPORT.md](REPORT.md). **Tier 6 (calibration to market data) is next.**
+> Crank-Nicolson PDE, a multithreaded C++20 core that matches the Python to rounding, exotic
+> options (Asian, barrier, lookback) plus the Heston stochastic volatility model, and
+> calibration to SPX option chains (implied forwards, SVI, Heston).
+> 369 Python tests (99% branch coverage) and 20 C++ tests, clean under ASan, UBSan and TSan.
+> Write-up: [REPORT.md](REPORT.md). **Tier 7 (portfolio risk and the MCP server) is next.**
 
 ---
 
@@ -82,7 +83,7 @@ The engine doesn't places or modifies orders. The IBKR gateaway code is read onl
 | 3 | Tree and PDE converge to Tier 1 on European payoffs (1e-4 and second order). American puts from tree and PDE agree to 0.05% of the price. American call on a non-dividend stock equals the European call exactly; with an 8% dividend yield early exercise is worth 2.54 |
 | 4 | The Python implementation on identical inputs: 1e-11 relative on 100,000 random options (largest gap 1.1e-13), the same tree to 1e-13, the same Monte Carlo on the same normals to 1e-11. The C++ generator matches NumPy's Philox bit for bit, and a seed gives the same bits on 1 to 8 threads. Clean ASan, UBSan and TSan builds |
 | 5 | Every closed form against a simulation of the same contract, with the 95% interval holding it 92 to 96% of the time over 200 seeds: the geometric Asian, the continuous barrier and lookback (Brownian bridge), and the Heston semi-analytical price against full-truncation Monte Carlo. The semi-analytical price against an independent integral (Lewis) to 1e-7, and Heston converging linearly to Black-Scholes as vol-of-vol goes to zero (gap 3e-5 at 1e-4) |
-| 6 | Fit errors per maturity, reproducible from a cached chain snapshot |
+| 6 | A synthetic SPX-like chain priced by the library with known parameters and planted bad quotes: every bad quote caught by its own filter, the forward within 1 bp, SVI and Heston recovering their parameters (Heston from all 8 starting points). On a real SPXW snapshot: fit errors per maturity, and the same numbers bit for bit when rerun from the cached snapshot |
 | 7 | Read-only behaviour on the live account. The MCP tools are listed and callable from the MCP inspector |
 
 ---
@@ -96,8 +97,8 @@ The engine doesn't places or modifies orders. The IBKR gateaway code is read onl
 | Quality | ruff (lint and format), mypy strict, pytest with coverage, GitHub Actions, Codecov |
 | Performance core | C++20, CMake, pybind11, scikit-build-core |
 | C++ testing and speed | GoogleTest, Google Benchmark, pytest-benchmark, ASan, UBSan and TSan |
-| Analysis | pandas, matplotlib |
-| Market data | IBKR API, read-only, cached and paced; yfinance as fallback |
+| Analysis | matplotlib (plots); the calibration itself is NumPy and SciPy only |
+| Market data | IBKR API through ib_async, read-only, cached and paced; yfinance as fallback (both in the optional `market` extra) |
 | Integration | an MCP server (Tier 7) for QuantDesk |
 
 ---
@@ -322,6 +323,79 @@ logarithm jumps across a branch cut.
 
 ![Implied volatility of Heston prices against the flat Black-Scholes volatility](docs/img/tier5_heston_smile.png)
 
+### Tier 6: Calibration to market data
+
+From a chain of option quotes to a volatility surface: clean the quotes, imply each expiry's
+forward from put-call parity (no r or q assumed), invert the mids, fit SVI per expiry with
+butterfly and calendar arbitrage checks, and calibrate Heston to every expiry at once.
+
+```python
+import ope
+
+chain = ope.load_snapshot("tests/fixtures/spx_synthetic.csv")  # or a snapshot you pulled
+surface = ope.iv_surface(chain)  # cleaned, forwards from parity, implied vols
+print("\n".join(surface.report.lines()))  # how many quotes each filter removed: 153 kept of 420
+surface.forwards["20270108"].F  # 5161.85, the 1 year forward (true value 5162.13)
+
+fits = ope.fit_svi_surface(surface)  # 1 SVI per expiry, butterfly and calendar checked
+fits[0].rms, fits[0].min_g  # 0.061 vol points, g(k) >= 0: no butterfly arbitrage
+cal = ope.calibrate_heston(surface)  # 8 seeded starting points, about 3 s
+cal.params  # v0 0.0200, kappa 2.48, theta 0.0351, xi 0.797, rho -0.751 (true: 0.02, 2.5, 0.035, 0.8, -0.75)
+```
+
+```bash
+uv run ope surface tests/fixtures/spx_synthetic.csv     # the cleaning report and the forwards
+uv run ope svi tests/fixtures/spx_synthetic.csv         # SVI fit error per expiry, arbitrage checks
+uv run ope calibrate tests/fixtures/spx_synthetic.csv   # Heston params, Feller, error per expiry
+uv run ope plot-surface tests/fixtures/spx_synthetic.csv --out smiles.png
+```
+
+**Walkthrough:** [notebooks/tier6_calibration.ipynb](notebooks/tier6_calibration.ipynb): a raw
+chain and its junk, the cleaning report, parity as a straight line, what a wrong forward does to
+the smile, SVI and its arbitrage checks, the Heston calibration from 8 starts, and the term
+structure of the skew.
+
+**About the data.** The library pulls real option chains, but **this repository publishes no real
+market data.** The Interactive Brokers market data agreement doesn't allow passing quotes on, so
+real snapshots stay in the git-ignored `data/` folder, and the tests, the notebook and CI run on
+a synthetic SPX-like chain that the library prices itself (Heston with known parameters, bid-ask
+spreads, prices rounded to the tick, and a few broken quotes of each kind). You can pull your
+own real chains with your own account, as below.
+
+**Connecting your own IB Gateway (read-only).**
+1. Install the extra: `uv sync --extra market` (ib_async and yfinance).
+2. In IB Gateway or TWS: Configure → Settings → API → Settings. Tick **Read-Only API**, tick
+   **Allow connections from localhost only**, check that `127.0.0.1` is in the trusted IPs, and
+   note the **Socket port** (IB's defaults: 4001 Gateway live, 4002 Gateway paper, 7496 TWS live,
+   7497 TWS paper).
+3. Pull a snapshot, giving your port as a flag or an environment variable:
+
+```bash
+uv run ope fetch-chain --source ibkr --port 4002          # or: export OPE_IB_PORT=4002
+uv run ope calibrate data/chains/spx_ibkr_<date>_<time>.csv
+```
+
+The fetcher only does the API handshake (no positions, orders or account data are requested),
+uses streaming market data requests (never the billed snapshot requests), stays at 50 quotes at a
+time, and writes every batch to `data/chains/` before anything reads it, so a rerun never asks for
+the same quotes twice. Without a market data subscription IBKR returns delayed data, which works
+the same. `--source yfinance` (or `auto`, the default, when no gateway answers) uses Yahoo instead.
+
+**On a real SPXW snapshot** (IBKR delayed data, close of 23 October 2026, 8 expiries from 7 to
+342 days, 158 quotes kept of 392), run locally:
+
+| Days to expiry | 7 | 14 | 31 | 56 | 84 | 159 | 250 | 342 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| SVI rms error (vol points) | 0.39 | 0.13 | 0.09 | 0.09 | 0.11 | 0.14 | 0.04 | 0.003 |
+| Heston rms error (vol points) | 2.57 | 1.82 | 0.89 | 1.03 | 1.17 | 1.11 | 0.29 | 0.07 |
+
+SVI fits every expiry with no butterfly or calendar arbitrage on the quoted strikes. Heston (v₀ =
+0.0287, κ = 4.80, θ = 0.0503, ξ = 1.78, ρ = −0.687, Feller violated) fits the long end and misses
+the steep one-week skew: with no jumps, its variance can't move fast enough. The whole calibration
+takes 4 to 7 seconds and gives the same parameters bit for bit when rerun from the snapshot.
+
+![Implied volatility smiles per expiry with the SVI and Heston fits, synthetic chain](docs/img/tier6_smiles.png)
+
 ---
 
 ## Benchmarks
@@ -355,6 +429,7 @@ What the table says:
 
 ```
 src/ope/            Python library (models, Greeks, Monte Carlo, trees, PDE, calibration, risk)
+tests/fixtures/     the synthetic SPX-like chain snapshot the tests and the notebook run on
 cpp/                C++20 core: headers, sources, pybind11 bindings, GoogleTest, Google Benchmark
 CMakeLists.txt      builds the Python module (through scikit-build-core) or the C++ tests and benchmarks
 tests/              validation tests for every tier, run on the Python and the C++ side
@@ -381,5 +456,5 @@ Parts of this projects are also based on external sources, such as books I read 
 | 3 | Hull: binomial trees and numerical procedures. Wilmott, *Paul Wilmott Introduces Quantitative Finance* (finite differences) |
 | 4 | Salmon et al., *Parallel Random Numbers: As Easy as 1, 2, 3* (2011, Philox). Chan, Golub and LeVeque, *Algorithms for Computing the Sample Variance* (1983). Box and Muller (1958) |
 | 5 | Hull: exotic options. Heston (1993). Albrecher et al., *The Little Heston Trap* (2007). Lord, Koekkoek and van Dijk, *A Comparison of Biased Simulation Schemes for Stochastic Volatility Models* (2010, full truncation). Broadie, Glasserman and Kou, *A Continuity Correction for Discrete Barrier Options* (1997). Lewis, *Option Valuation under Stochastic Volatility* (2000) |
-| 6 | Gatheral, *The Volatility Surface*. Gatheral and Jacquier, *Arbitrage-free SVI volatility surfaces* (2014) |
+| 6 | Gatheral, *The Volatility Surface*. Gatheral and Jacquier, *Arbitrage-free SVI volatility surfaces* (2014). Lee, *The Moment Formula for Implied Volatility at Extreme Strikes* (2004) |
 

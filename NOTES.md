@@ -227,3 +227,64 @@ $$C = S e^{-qT} P_1 - K e^{-rT} P_2, \qquad P_2 = \frac{1}{2} + \frac{1}{\pi}\in
   discrete lookback less; the gap shrinks like 1/√n.
 - Heston's smile comes from random volatility; ρ < 0 tilts it into the equity skew, and the
   at-the-money vol (18.5%) falls below the 20% average vol.
+
+## Tier 6: Calibration to market data
+
+### Key formulas
+
+**Forward and discount factor from put-call parity**, per expiry, with no r or q assumed: C − P
+is a straight line in K, slope −D and intercept D·F.
+
+$$C - P = D\,(F - K) = DF - D\,K$$
+
+**Raw SVI**, total implied variance w = σ²T of one expiry against log moneyness k = log(K/F):
+
+$$w(k) = a + b\left(\rho\,(k - m) + \sqrt{(k - m)^2 + \sigma^2}\right)$$
+
+**Butterfly arbitrage** (Gatheral and Jacquier): the density of k is
+g(k)/√(2πw)·exp(−d₂²/2), so the curve is arbitrage-free only if
+
+$$g(k) = \left(1 - \frac{k\,w'}{2w}\right)^2 - \frac{w'^2}{4}\left(\frac{1}{w} + \frac{1}{4}\right) + \frac{w''}{2} \ge 0$$
+
+**Calendar arbitrage:** w(k, T) must not decrease in T at any k. **Lee's wing bound:**
+b(1 + |ρ|) ≤ 2.
+
+**Calibration residual** per quote: price error over vega ≈ vol error, weighted by the quote's
+bid-ask spread in vol.
+
+$$r_i = \frac{C^{\text{Heston}}_i - C^{\text{mid}}_i}{\text{vega}_i}\cdot\frac{1}{\sigma^{\text{ask}}_i - \sigma^{\text{bid}}_i}$$
+
+### Gotchas
+
+- The index level a broker returns after the close isn't synchronous with the option quotes
+  (16:00 vs. 16:15 for SPX): with it the 1-week dividend yield came out at −10%. Read the forward
+  from parity.
+- `ib_async`'s `connect()` requests positions on every connection, whatever `fetchFields` says.
+  For market data only, use the bare handshake (`ib.client.connect`).
+- Snapshot and regulatory snapshot market data requests are billed per request; streaming
+  delayed data is free.
+- "Zero volume" is a bad liquidity filter for index options: 57% of good real quotes. A missing
+  open interest is unknown, not zero.
+- A one-pass outlier rule on a regression drops good points with the bad one, because the bad
+  point tilts the first fit. Remove the worst, refit, repeat.
+- Check SVI arbitrage where the data is. Far outside it a slice can bend anywhere (g = −86 at
+  k = −0.35 on a 1-week slice), and penalties there distort every fit.
+- SVI's parameters trade off on a narrow strike range (ρ from −0.4 to −0.9 for the same curve
+  within noise): trust the curve, not ρ alone.
+- A fixed quadrature grid fails when e^(−iu·log(K/F)) turns many times before φ decays (short
+  maturities, far strikes): let the node count follow U·|log(K/F)|.
+
+### Takeaways
+
+- Calibration runs the pricing problem backwards: from prices to the parameters that explain
+  them, and it is only as good as the quotes that go in.
+- Put-call parity gives the forward and the discount factor for free, model-free, from the
+  options themselves.
+- SVI fits each expiry almost perfectly (0.003 to 0.39 vol points rms on the real SPX snapshot)
+  because each expiry gets its own 5 numbers; the arbitrage checks are what keep it honest.
+- Heston, with one set of 5 numbers for all expiries, fits the long end to 0.07 vol points and
+  misses the 1-week skew by up to 7: a diffusion's skew levels off at short maturities, the
+  market's doesn't. That is the case for jumps.
+- Validate on synthetic data with known answers first: the chain with planted bad quotes exposed
+  the parity regression dropping good pairs with the bad one, which the real snapshot (0
+  outliers) would never have shown.
