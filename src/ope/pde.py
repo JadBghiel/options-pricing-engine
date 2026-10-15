@@ -2,8 +2,8 @@
 
 we work in x = ln S, where the pde has constant coefficients:
   dV/dtau = 1/2 sigma^2 V_xx + (r - q - sigma^2/2) V_x - r V,   tau = time to expiry
-starting from the payoff at tau = 0 and stepping to tau = T. the strike sits exactly on a grid
-node, the spot is read off the grid by interpolation
+starting from the payoff at tau = 0 and stepping to tau = T, the strike sits on a grid node,
+the spot is read off the grid by interpolation
 """
 
 import math
@@ -21,7 +21,7 @@ from ope.monte_carlo import payoff
 class PDESolution:
     """option values today on the grid, plus the early exercise boundary over time
 
-    times are calendar times from today (0) to expiry (T); boundary[i] is the stock price where
+    times are calendar times from today (0) to expiry (T), boundary[i] is the stock price where
     exercise starts at times[i] (nan when no node is exercised, e.g. a european option)
     """
 
@@ -41,9 +41,9 @@ def _grid(S: float, K: float, T: float, sigma: float, n_space: int, width: float
     lo = min(math.log(S), math.log(K)) - spread
     hi = max(math.log(S), math.log(K)) + spread
     dx = (hi - lo) / n_space
-    # LEARNING NOTE: the payoff has a kink at the strike. if ln K falls between 2 nodes the kink
-    # gets smeared and the error stops shrinking smoothly as the grid gets finer, so the grid is
-    # shifted to put ln K exactly on a node
+    # LEARNING NOTE: the payoff has a kink at the strike, if ln K falls between 2 nodes the kink
+    # gets smeared and the error stops shrinking smoothly as the grid gets finer -> the grid is
+    # shifted to put ln K on a node
     k = round((math.log(K) - lo) / dx)
     start = math.log(K) - k * dx
     return np.asarray(start + dx * np.arange(n_space + 1), dtype=np.float64)
@@ -98,9 +98,9 @@ def _psor(
             right = y[j + 1] if j < n - 1 else 0.0
             gs = (rhs[j] - lower * left - upper * right) / diag
             new = y[j] + omega * (gs - y[j])
-            # LEARNING NOTE: the "projected" in psor is this max: an american option can never be
-            # worth less than exercising now, so each sweep pushes the value back up to the
-            # payoff where it dips below. where it does, that node is in the exercise region
+            # LEARNING NOTE: the "projected" in psor is this max: an american option is always
+            # worth at least the exercise value -> each sweep pushes the value back up to the
+            # payoff where it dips below, and where it does that node is in the exercise region
             if new < floor[j]:
                 new = floor[j]
             change = max(change, abs(new - y[j]))
@@ -130,7 +130,7 @@ def pde_solve(
 ) -> PDESolution:
     """solve the black scholes pde on a log price grid from expiry back to today
 
-    n_space intervals in ln S, n_time crank nicolson steps. the first `rannacher` steps are each
+    n_space intervals in ln S, n_time crank nicolson steps, the first `rannacher` steps are each
     replaced by 2 fully implicit half steps, which damps the wobble the payoff's kink causes
     """
     _check_option(option)

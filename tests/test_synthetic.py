@@ -18,7 +18,7 @@ def test_the_fixture_is_the_default_synthetic_chain() -> None:
     assert np.array_equal(saved.right, made.right)
     assert np.array_equal(saved.strike, made.strike)
     # bid and ask are rounded to the tick: a price on a tick boundary could round the other
-    # way on another machine, so 1 tick of slack
+    # way on another machine -> 1 tick of slack
     for name in ("bid", "ask"):
         a, b = getattr(saved, name), getattr(made, name)
         assert np.array_equal(np.isnan(a), np.isnan(b))

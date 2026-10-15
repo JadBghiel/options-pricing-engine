@@ -1,15 +1,15 @@
-"""option chain snapshots: 1 chain at 1 moment, saved as csv + json so a calibration reruns from
-disk w/ the same numbers
+"""option chain snapshots: 1 chain at 1 moment, saved on disk as csv + json, plus what goes in a
+snapshot (which expiries, which strikes, at what time)
 
-a snapshot is plain numpy columns, 1 row per quote (expiry, strike, call or put). the fetchers in
-ope.market write them, everything after (cleaning, the iv surface, svi, heston) only reads them.
-no pandas: the stdlib csv module and numpy are enough for a few thousand rows
+a snapshot is plain numpy columns, 1 row per quote (expiry, strike, call or put), the fetchers in
+ope.ibkr and ope.market write them, everything after (cleaning, the iv surface, svi, heston) reads
+them, no pandas: the stdlib csv module and numpy are enough for a few thousand rows
 """
 
 import csv
 import json
 import math
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, time, timedelta
 from pathlib import Path
@@ -24,7 +24,7 @@ StrArray = npt.NDArray[np.str_]
 MetaValue = str | float | int | list[str]
 
 NEW_YORK = ZoneInfo("America/New_York")
-# spxw settles on the 4pm close of the index, so a quote's T runs to 16:00 new york
+# spxw settles on the 4pm close of the index -> a quote's T goes to 16:00 new york
 SETTLEMENT = time(16, 0)
 # spx options trade until 16:15, the frozen quotes after the close are the 16:15 ones
 OPTIONS_CLOSE = time(16, 15)
@@ -46,8 +46,8 @@ COLUMNS = ("expiry", "right", *FLOAT_COLUMNS)
 
 @dataclass(frozen=True)
 class Chain:
-    """1 row per quote. expiry 'YYYYMMDD', right 'C' or 'P', missing numbers are nan.
-    last_trade_time is epoch seconds. meta holds where and when (never any account data)"""
+    """1 row per quote: expiry 'YYYYMMDD', right 'C' or 'P', missing numbers are nan,
+    last_trade_time is epoch seconds, meta holds where and when (no account data)"""
 
     expiry: StrArray
     right: StrArray
@@ -105,7 +105,7 @@ def year_fraction(as_of: datetime, expiry: str) -> float:
 
 def last_session_close(now: datetime) -> datetime | None:
     """the options close (16:15 new york) the quotes belong to when the market is shut, None
-    while it's open. weekends handled, exchange holidays not (a holiday reads as a normal day)"""
+    while it's open, weekends handled, exchange holidays not (a holiday reads as a normal day)"""
     local = now.astimezone(NEW_YORK)
     weekday = local.weekday() < 5
     if weekday and OPTIONS_OPEN <= local.time() < OPTIONS_CLOSE:
@@ -136,8 +136,8 @@ def from_rows(rows: list[dict[str, str | float]], meta: Mapping[str, MetaValue])
 
 
 def save_snapshot(chain: Chain, stem: Path) -> Path:
-    """writes stem.csv (the quotes) and stem.json (meta), returns the csv path. floats are
-    written w/ repr, so reading back gives the same bits"""
+    """writes stem.csv (the quotes) and stem.json (meta), returns the csv path, floats are
+    written w/ repr -> reading back gives the same bits"""
     stem.parent.mkdir(parents=True, exist_ok=True)
     csv_path = stem.with_suffix(".csv")
     with csv_path.open("w", newline="") as f:
@@ -161,3 +161,91 @@ def load_snapshot(path: Path | str) -> Chain:
     with csv_path.open(newline="") as f:
         rows: list[dict[str, str | float]] = list(csv.DictReader(f))
     return from_rows(rows, meta)
+
+
+# batches on disk, missing numbers
+
+
+def _num(x: float | None) -> float:
+    """ib_async uses nan for empty, but -1 and None show up too"""
+    if x is None:
+        return math.nan
+    v = float(x)
+    return math.nan if v < 0 or not math.isfinite(v) else v
+
+
+def _write_part(path: Path, rows: list[dict[str, str | float]]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=COLUMNS)
+        w.writeheader()
+        for r in rows:
+            w.writerow(
+                {k: ("" if isinstance(v, float) and math.isnan(v) else v) for k, v in r.items()}
+            )
+
+
+def _read_part(path: Path) -> list[dict[str, str | float]]:
+    with path.open(newline="") as f:
+        return list(csv.DictReader(f))
+
+
+# what goes in a snapshot
+
+DATA_CHAINS = Path("data/chains")
+# about 1 week to 1 year, the nearest listed expiry to each
+TARGET_DAYS = (7, 14, 30, 60, 91, 182, 273, 365)
+
+
+def pick_expiries(
+    available: Iterable[str], as_of: datetime, target_days: Sequence[int] = TARGET_DAYS
+) -> list[str]:
+    """the listed expiry nearest to each target (in days), each one at most once, sorted,
+    expiries under 2 days are skipped, their smile is all noise"""
+    listed = sorted({e for e in available if year_fraction(as_of, e) * 365 >= 2})
+    if not listed:
+        return []
+    days = np.array([year_fraction(as_of, e) * 365 for e in listed])
+    return sorted({listed[int(np.argmin(np.abs(days - t)))] for t in target_days})
+
+
+def strike_band(T: float) -> tuple[float, float]:
+    """log moneyness range to request: 4 sd below the spot, 2 above, at a 20% reference vol,
+    the downside goes further bc index puts are where the liquidity and the skew are"""
+    sd = 0.2 * math.sqrt(T)
+    return -min(max(4 * sd, 0.08), 0.5), min(max(2 * sd, 0.04), 0.25)
+
+
+def pick_strikes(available: Iterable[float], spot: float, T: float, n: int = 30) -> list[float]:
+    """up to n listed strikes spread evenly in log moneyness over strike_band(T)
+
+    the strike list IB gives is the union over every expiry, and long dated spxw lists
+    round strikes -> multiples of 25 past 1 month, 50 past 6 months, when there are enough"""
+    lo, hi = strike_band(T)
+    ks = np.array(sorted(set(available)), dtype=np.float64)
+    step = 50.0 if T > 0.5 else 25.0 if T > 1 / 12 else 0.0
+    if step:
+        rounded = ks[np.isclose(np.mod(ks, step), 0.0)]
+        if len(rounded) >= n:
+            ks = rounded
+    k = np.log(ks / spot)
+    inside = ks[(k >= lo) & (k <= hi)]
+    if len(inside) <= n:
+        return [float(x) for x in inside]
+    k_in = np.log(inside / spot)
+    picks = {int(np.argmin(np.abs(k_in - t))) for t in np.linspace(lo, hi, n)}
+    return sorted(float(inside[i]) for i in picks)
+
+
+def snapshot_as_of(now: datetime, market_data_type: int | None = None) -> datetime:
+    """the moment the quotes belong to: the last close when the market is shut, now (minus
+    15 min for delayed data) while it's open"""
+    close = last_session_close(now)
+    if close is not None:
+        return close
+    lag = timedelta(minutes=15) if market_data_type in (3, 4) else timedelta(0)
+    return (now - lag).replace(second=0, microsecond=0)
+
+
+def snapshot_stem(symbol: str, source: str, as_of: datetime, out_dir: Path = DATA_CHAINS) -> Path:
+    return out_dir / f"{symbol.lower()}_{source}_{as_of:%Y%m%d_%H%M}"

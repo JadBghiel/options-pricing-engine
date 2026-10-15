@@ -7,12 +7,17 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from fakes import SATURDAY, TUESDAY_OPEN
 from ope.chain import (
     COLUMNS,
     from_rows,
     last_session_close,
     load_snapshot,
+    pick_expiries,
+    pick_strikes,
     save_snapshot,
+    snapshot_as_of,
+    strike_band,
     year_fraction,
 )
 
@@ -80,3 +85,32 @@ def test_bad_chains_raise() -> None:
     chain = from_rows([good], {})
     with pytest.raises(ValueError, match="rows"):
         type(chain)(**{**{n: getattr(chain, n) for n in COLUMNS}, "bid": np.zeros(2)})
+
+
+# what goes in a snapshot
+
+
+def test_pick_expiries_nearest_once_and_not_too_short() -> None:
+    as_of = datetime(2026, 10, 23, 20, 15, tzinfo=UTC)
+    # sunday 16:00 is 1.99 days after friday 16:15 -> skipped, monday is 2.99 -> kept
+    listed = ["20261023", "20261025", "20261026", "20261030", "20261106", "20270115"]
+    expected = ["20261026", "20261030", "20261106", "20270115"]
+    assert pick_expiries(listed, as_of, (1, 7, 8, 14, 90)) == expected
+    assert pick_expiries(["20261023", "20261025"], as_of) == []
+
+
+def test_pick_strikes_stays_in_the_band_and_prefers_round_ones() -> None:
+    ks = [float(k) for k in range(1000, 10000, 5)]
+    for T in (7 / 365, 0.25, 1.0):
+        lo, hi = strike_band(T)
+        picks = pick_strikes(ks, 6500.0, T, n=30)
+        assert 0 < len(picks) <= 30
+        assert all(lo <= math.log(k / 6500) <= hi for k in picks)
+    assert all(k % 50 == 0 for k in pick_strikes(ks, 6500.0, 1.0))
+    assert len(pick_strikes([6500.0, 6505.0], 6500.0, 1.0)) == 2  # too few round ones: keep all
+
+
+def test_snapshot_as_of() -> None:
+    assert snapshot_as_of(SATURDAY) == datetime(2026, 10, 23, 20, 15, tzinfo=UTC)
+    assert snapshot_as_of(TUESDAY_OPEN) == TUESDAY_OPEN
+    assert snapshot_as_of(TUESDAY_OPEN, 3) == datetime(2026, 10, 27, 18, 45, tzinfo=UTC)

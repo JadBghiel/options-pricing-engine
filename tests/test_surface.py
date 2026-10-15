@@ -154,7 +154,7 @@ def test_surface_vols_sit_on_the_true_heston_smile() -> None:
         m = surface.rows(e)
         f = surface.forwards[e]
         true = np.asarray(heston_implied_vol(S, surface.K[m], f.T, R, SPX_LIKE, Q))
-        # the mid is inside the spread by construction, so its vol is within the vol spread
+        # the mid is inside the spread by construction -> its vol is within the vol spread
         assert np.all(np.abs(surface.iv[m] - true) <= surface.vol_spread[m] + 1e-4), e
     assert np.all(surface.weights <= 1 / MIN_VOL_SPREAD)
     assert np.all(np.isin(surface.right[surface.k < 0], ["P"]))

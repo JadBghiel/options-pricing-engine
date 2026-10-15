@@ -1,6 +1,6 @@
 """tier 1 validation: black scholes prices and greeks vs references and consistency checks
 
-reference values come from an independent script (plain math + scipy.stats), not the book
+reference values come from an independent script (plain math + scipy.stats)
 """
 
 import math
@@ -21,7 +21,7 @@ Option = Literal["call", "put"]
 
 
 def _norm_cdf_erf(x: float) -> float:
-    # independent of scipy. fine in absolute terms, but in the far left tail 1 + erf(x)
+    # independent of scipy, fine in absolute terms, but in the far left tail 1 + erf(x)
     # cancels to 0 and loses every significant digit -> the library uses scipy ndtr
     return 0.5 * (1.0 + math.erf(x / math.sqrt(2.0)))
 
@@ -51,7 +51,7 @@ def test_norm_pdf_is_the_slope_of_the_cdf() -> None:
     xs = np.linspace(-5, 5, 101)
     h = 1e-5
     slope = (norm_cdf(xs + h) - norm_cdf(xs - h)) / (2 * h)
-    # rounding in the difference is ~eps/h = 1e-11, so the absolute floor sits above it
+    # rounding in the difference is ~eps/h = 1e-11 -> the absolute floor sits above it
     np.testing.assert_allclose(norm_pdf(xs), slope, rtol=1e-8, atol=1e-10)
     assert float(norm_pdf(0.0)) == pytest.approx(1 / math.sqrt(2 * math.pi), abs=1e-15)
 
@@ -60,7 +60,7 @@ def test_norm_pdf_is_the_slope_of_the_cdf() -> None:
 
 
 def test_hull_call_and_put(impl: ModuleType) -> None:
-    # Hull, the Black-Scholes-Merton model: S=42, K=40, T=0.5, r=10%, sigma=20%
+    # hull, the Black-Scholes-Merton model: S=42, K=40, T=0.5, r=10%, sigma=20%
     assert impl.call_price(42, 40, 0.5, 0.10, 0.20) == pytest.approx(4.7594223929, abs=1e-9)
     assert impl.put_price(42, 40, 0.5, 0.10, 0.20) == pytest.approx(0.8085993729, abs=1e-9)
     assert round(float(impl.call_price(42, 40, 0.5, 0.10, 0.20)), 2) == 4.76
@@ -74,7 +74,7 @@ def test_hull_d1_d2() -> None:
 
 
 def test_hull_greeks_example(impl: ModuleType) -> None:
-    # Hull, the Greek letters: S=49, K=50, T=20/52, r=5%, sigma=20%
+    # hull, the Greek letters: S=49, K=50, T=20/52, r=5%, sigma=20%
     args = (49, 50, 20 / 52, 0.05, 0.20)
     g = impl.greeks("call", *args)
     assert impl.call_price(*args) == pytest.approx(2.4005273233, abs=1e-9)
@@ -122,7 +122,7 @@ def test_greeks_match_central_finite_differences(impl: ModuleType, option: Optio
         args = {"S": S, "K": K, "T": T, "r": r, "sigma": sigma, "q": q} | bump
         return np.asarray(impl.price(option, **args))
 
-    # bumps scaled to each input. gamma is a 2nd difference, the most sensitive to h
+    # bumps scaled to each input, gamma is a 2nd difference, the most sensitive to h
     hS, hT, hs, hr = 1e-4 * S, 1e-4 * T, 1e-4 * sigma, 1e-5
     fd = {
         "delta": (v(S=S + hS) - v(S=S - hS)) / (2 * hS),

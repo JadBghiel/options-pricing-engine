@@ -1,9 +1,9 @@
 """from a raw chain to an implied vol surface: clean the quotes, imply the forward, invert mids
 
-1. clean the prices: no 2 sided quote, crossed, stale, wide spread. each filter counted
-2. forward: per expiry, put call parity C - P = D (F - K) is a line in K, so a regression gives
-   the discount factor D and the forward F. no r or q assumed. it runs before step 3: parity
-   needs good prices, not traded contracts, and itm quotes rarely trade
+1. clean the prices: no 2 sided quote, crossed, stale, wide spread, each filter counted
+2. forward: per expiry, put call parity C - P = D (F - K) is a line in K -> a regression gives
+   the discount factor D and the forward F, no r or q assumed, it comes before step 3: parity
+   needs good prices, traded or not, and itm quotes rarely trade
 3. liquidity: drop the quotes nobody traded and nobody holds
 4. surface: the implied vol of each out of the money mid inside the no arbitrage bounds (tier 1
    solver), plus the vols of the bid and the ask, whose gap says how much the market itself
@@ -28,7 +28,7 @@ MAX_REL_SPREAD = 0.5
 MAX_TRADE_AGE_DAYS = 5.0
 # parity needs this many strikes w/ both a call and a put
 MIN_PAIRS = 3
-# floor on the bid ask spread in vol, so 1 very tight quote cant take all the weight
+# floor on the bid ask spread in vol -> 1 very tight quote cant take all the weight
 MIN_VOL_SPREAD = 0.001
 
 
@@ -58,8 +58,8 @@ def clean_chain(
     liquidity: bool = True,
     report: CleanReport | None = None,
 ) -> tuple[Chain, CleanReport]:
-    """the quote level filters, each one counted. liquidity=False stops before the volume and
-    open interest one (iv_surface implies the forward in between). report: counts so far, the
+    """the quote level filters, each one counted, liquidity=False stops before the volume and
+    open interest one (iv_surface implies the forward in between), report: counts so far, the
     new ones are added after them"""
     keep = np.ones(len(chain), dtype=bool)
     removed: dict[str, int] = dict(report.removed) if report else {}
@@ -86,10 +86,10 @@ def clean_chain(
             mid = 0.5 * (bid + ask)
             apply("wide spread", (ask - bid) / mid > max_rel_spread)
         if liquidity:
-            # LEARNING NOTE: no trade today AND open interest known to be 0, not volume = 0
-            # alone. on the real spxw snapshot 57% of the 2 sided quotes didnt trade that day,
-            # mostly long dated quotes market makers keep tight anyway (the 1 year atm put at
-            # 366.3 / 369.1). and a missing open interest is unknown, not 0: it arrives after
+            # LEARNING NOTE: no trade today AND open interest known to be 0, volume = 0 alone
+            # isnt enough: on the real spxw snapshot 57% of the 2 sided quotes didnt trade that
+            # day, mostly long dated quotes market makers keep tight anyway (the 1 year atm put
+            # at 366.3 / 369.1), and a missing open interest is unknown: it arrives after
             # the quote and was missing on 18 of 38 quotes 9 months out
             apply("no volume, no open interest", ~(chain.volume > 0) & (chain.open_interest == 0))
     return chain.select(keep), CleanReport(n_raw, removed, int(np.sum(keep)), notes)
@@ -117,10 +117,10 @@ class Forward:
         return self.r - math.log(self.F / S) / self.T
 
 
-# LEARNING NOTE: C - P = D F - D K, a straight line in K: the slope is -D, the intercept D F.
+# LEARNING NOTE: C - P = D F - D K, a straight line in K: the slope is -D, the intercept D F,
 # on the real snapshot the index level from IB was out of sync w/ the 16:15 option
-# quotes, and w/ it the 1 week dividend yield came out at -10%. the options carry their own
-# forward, so we read it from them
+# quotes, and w/ it the 1 week dividend yield came out at -10%, the options carry their own
+# forward and we read it from them
 def _parity_line(ks: FloatArray, y: FloatArray, w: FloatArray) -> tuple[float, float, FloatArray]:
     """weighted least squares of y = D F - D K -> (D F, D, residuals)"""
     A = np.column_stack([np.ones_like(ks), -ks])
@@ -130,8 +130,8 @@ def _parity_line(ks: FloatArray, y: FloatArray, w: FloatArray) -> tuple[float, f
 
 
 def implied_forwards(chain: Chain, min_pairs: int = MIN_PAIRS) -> dict[str, Forward]:
-    """F and D per expiry from every strike w/ both a call and a put. weighted by 1 / (sum of
-    the 2 spreads): wide quotes in the wings move the line less. pairs further from the line
+    """F and D per expiry from every strike w/ both a call and a put, weighted by 1 / (sum of
+    the 2 spreads): wide quotes in the wings move the line less, pairs further from the line
     than twice their spread are dropped, the worst first, and the line refit each time"""
     out: dict[str, Forward] = {}
     T_all = chain.T
@@ -148,9 +148,9 @@ def implied_forwards(chain: Chain, min_pairs: int = MIN_PAIRS) -> dict[str, Forw
         spread = (chain.ask[ic] - chain.bid[ic]) + (chain.ask[ip] - chain.bid[ip])
         w = 1.0 / np.maximum(spread, 1e-8)
         # 1 bad price (a fat finger, a quote from another moment) drags the whole line, weights
-        # alone dont stop a residual of thousands. the worst pair goes 1 at a time, then a refit:
-        # dropping every pair far from the 1st line also dropped good ones at the ends (the bad
-        # pair tilts it), 5 pairs for 1 bad quote in the tests
+        # alone dont stop a residual of thousands -> the worst pair goes 1 at a time, then a
+        # refit: dropping every pair far from the 1st line also dropped good ones at the ends
+        # (the bad pair tilts it), 4 good pairs for 1 bad quote in the tests
         ok = np.ones(len(ks), dtype=bool)
         DF, D, resid = _parity_line(ks, y, w)
         while True:
@@ -170,7 +170,7 @@ def implied_forwards(chain: Chain, min_pairs: int = MIN_PAIRS) -> dict[str, Forw
 
 @dataclass(frozen=True)
 class Surface:
-    """1 row per out of the money quote kept. k = log(K / F). iv_bid is nan when the bid is at
+    """1 row per out of the money quote kept, k = log(K / F), iv_bid is nan when the bid is at
     or below the no arbitrage floor (no vol produces it)"""
 
     expiry: StrArray

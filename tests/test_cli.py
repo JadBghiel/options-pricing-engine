@@ -138,7 +138,7 @@ def test_barrier_prints_discrete_bgk_and_continuous(capsys: pytest.CaptureFixtur
     out = capsys.readouterr().out
     assert "1.176065" in out  # continuous closed form
     assert "1.332070" in out  # bgk shift for 252 dates
-    # a barrier already crossed is a message, not a traceback
+    # a barrier already crossed gives a message and no traceback
     assert main(["barrier", *ATM, "--sigma", "0.2", "-H", "90", "--kind", "up-and-out"]) == 2
     assert "already at or past" in capsys.readouterr().err
 

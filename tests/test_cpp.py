@@ -1,8 +1,8 @@
 """tier 4 validation: the c++ core against the python modules on the same inputs
 
-the tier 1 to 3 tests already run on both sides (the impl fixture). this file checks the 2
-against each other directly: same inputs -> same numbers within floating point tolerance.
-the tolerances sit about 10x above the largest gap measured on 100,000 random options
+the tier 1 to 3 tests already run on both sides (the impl fixture). this file compares the 2
+directly: same inputs -> same numbers within floating point tolerance, the
+tolerances sit about 10x above the largest gap measured on 100,000 random options
 """
 
 import itertools
@@ -17,7 +17,7 @@ import ope
 from ope import _core, cpp
 
 Option = Literal["call", "put"]
-HULL = (42.0, 40.0, 0.5, 0.10, 0.20)  # S, K, T, r, sigma
+hull = (42.0, 40.0, 0.5, 0.10, 0.20)  # S, K, T, r, sigma
 
 
 def _random_params(n: int, seed: int) -> dict[str, np.ndarray]:
@@ -37,7 +37,7 @@ def _random_params(n: int, seed: int) -> dict[str, np.ndarray]:
 
 
 def test_the_extension_is_a_release_build() -> None:
-    # benchmarking a debug build is a classic trap, the module says how it was compiled
+    # a debug build gives meaningless benchmarks, the module says how it was compiled
     assert cpp.build_type == "Release"
     assert cpp.hardware_threads() >= 1
 
@@ -93,7 +93,8 @@ def test_bad_chain_inputs_raise() -> None:
 
 
 def test_philox_matches_numpy_bit_for_bit() -> None:
-    # numpy's Philox is the same philox 4x64-10, it only adds 1 to the counter before each block
+    # numpy's Philox is the same philox 4x64-10, w/ 1 difference:
+    # it adds 1 to the counter before each block
     for key, counter in itertools.product([(0, 0), (1, 2), (2**64 - 1, 12345)], [1, 2, 99, 2**40]):
         gen = np.random.Philox(key=np.array(key, dtype=np.uint64), counter=[counter - 1, 0, 0, 0])
         expected = [int(v) for v in gen.random_raw(4)]
@@ -121,10 +122,10 @@ def test_seed_and_generator_give_the_same_cpp_stream() -> None:
 def test_same_normals_same_price_in_python_and_cpp(
     option: Option, antithetic: bool, control: bool
 ) -> None:
-    # c++ cant reproduce numpy's random stream, so both sides get the same pre generated normals
+    # c++ cant reproduce numpy's random stream -> both sides get the same pre generated normals
     for seed in range(10):
         z = np.random.default_rng(seed).standard_normal(50_001)
-        args = (option, *HULL, 0.01)
+        args = (option, *hull, 0.01)
         kw = {"z": z, "antithetic": antithetic, "control_variate": control}
         a, b = ope.mc_price_from_normals(*args, **kw), cpp.mc_price_from_normals(*args, **kw)
         assert b.estimate == pytest.approx(a.estimate, rel=1e-11)
@@ -134,18 +135,18 @@ def test_same_normals_same_price_in_python_and_cpp(
 
 @pytest.mark.parametrize("threads", [1, 2, 3, 8])
 def test_threaded_cpp_run_equals_python_on_the_cpp_normals(threads: int) -> None:
-    # the whole multithreaded simulation, replayed in python from the exact draws c++ used
+    # the whole multithreaded simulation, replayed in python from the draws c++ used
     n = 3 * _core.mc_chunk + 123  # several chunks, the last 1 partial
-    res = cpp.mc_price("call", *HULL, n_paths=n, control_variate=True, rng=7, threads=threads)
+    res = cpp.mc_price("call", *hull, n_paths=n, control_variate=True, rng=7, threads=threads)
     z = cpp.normals(n, rng=7)
-    ref = ope.mc_price_from_normals("call", *HULL, z=z, control_variate=True)
+    ref = ope.mc_price_from_normals("call", *hull, z=z, control_variate=True)
     assert res.estimate == pytest.approx(ref.estimate, rel=1e-11)
     assert res.std_error == pytest.approx(ref.std_error, rel=1e-11)
 
 
 def test_same_seed_same_bits_for_any_thread_count() -> None:
     runs = {
-        t: cpp.mc_price("put", *HULL, n_paths=200_000, antithetic=True, rng=1, threads=t)
+        t: cpp.mc_price("put", *hull, n_paths=200_000, antithetic=True, rng=1, threads=t)
         for t in (1, 2, 4, 8)
     }
     assert len(set(runs.values())) == 1
@@ -153,19 +154,19 @@ def test_same_seed_same_bits_for_any_thread_count() -> None:
 
 def test_antithetic_cpp_uses_the_mirror_of_each_draw() -> None:
     z = cpp.normals(1_000, rng=2)
-    pairs = cpp.mc_price("call", *HULL, n_paths=2_000, antithetic=True, rng=2, threads=1)
-    ref = ope.mc_price_from_normals("call", *HULL, z=z, antithetic=True)
+    pairs = cpp.mc_price("call", *hull, n_paths=2_000, antithetic=True, rng=2, threads=1)
+    ref = ope.mc_price_from_normals("call", *hull, z=z, antithetic=True)
     assert pairs.estimate == pytest.approx(ref.estimate, rel=1e-12)
 
 
 def test_mc_price_from_normals_needs_two_independent_draws() -> None:
     for impl in (ope, cpp):
         with pytest.raises(ValueError, match="n_paths must be >= 2"):
-            impl.mc_price_from_normals("call", *HULL, z=[0.1])
-        # 1 antithetic pair is 2 paths but only 1 independent sample, no spread to measure
+            impl.mc_price_from_normals("call", *hull, z=[0.1])
+        # 1 antithetic pair is 2 paths and 1 independent sample, no spread to measure
         with pytest.raises(ValueError, match="2 independent"):
-            impl.mc_price_from_normals("call", *HULL, z=[0.1], antithetic=True)
-        assert math.isfinite(impl.mc_price_from_normals("call", *HULL, z=[0.1, -0.3]).std_error)
+            impl.mc_price_from_normals("call", *hull, z=[0.1], antithetic=True)
+        assert math.isfinite(impl.mc_price_from_normals("call", *hull, z=[0.1, -0.3]).std_error)
 
 
 # tree

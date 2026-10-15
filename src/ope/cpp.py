@@ -1,13 +1,13 @@
-"""the c++ core behind the same signatures as the python modules, so 1 test suite runs on both
+"""the c++ core behind the same signatures as the python modules, 1 test suite runs on both
 
 from ope import cpp
 cpp.price("call", 42, 40, 0.5, 0.1, 0.2)   # same as ope.price, computed in c++
 cpp.mc_price("call", 42, 40, 0.5, 0.1, 0.2, n_paths=1_000_000, rng=0, threads=8)
 
-extra keyword: threads (None = every core) on the chain and monte carlo functions. results
-dont depend on it. random draws come from philox in c++, not from numpy, so a seed gives a
-different (equally valid) estimate than ope.mc_price. same normals in -> same price out,
-see mc_price_from_normals
+extra keyword: threads (None = every core) on the chain and monte carlo functions, results
+dont depend on it, random draws come from philox in c++ -> a seed gives a different (equally
+valid) estimate than ope.mc_price, mc_price_from_normals takes the normals as an input and w/
+the same normals both sides give the same price
 """
 
 import numpy as np
@@ -54,8 +54,8 @@ def _chain(
     sigma: npt.ArrayLike,
     q: npt.ArrayLike,
 ) -> tuple[tuple[int, ...], _Flat]:
-    # numpy broadcasting, then 1 flat contiguous float64 array per input: the c++ side only
-    # sees 6 arrays of the same length
+    # numpy broadcasting, then 1 flat contiguous float64 array per input: the c++ side
+    # sees 6 arrays of the same len
     arrays = np.broadcast_arrays(*(np.asarray(v, dtype=np.float64) for v in (S, K, T, r, sigma, q)))
     S_, K_, T_, r_, sigma_, q_ = (np.ascontiguousarray(a).ravel() for a in arrays)
     return arrays[0].shape, (S_, K_, T_, r_, sigma_, q_)
@@ -131,7 +131,7 @@ def greeks(
 def seed_of(rng: RngLike) -> int:
     """the 64 bit philox key for a seed, a Generator or None (fresh entropy)
 
-    goes through numpy's SeedSequence like the python side, so rng=3 and
+    goes through numpy's SeedSequence like the python side, rng=3 and
     rng=np.random.default_rng(3) give the same c++ stream, and seeds 0, 1, 2 give unrelated keys
     """
     gen = rng if isinstance(rng, np.random.Generator) else np.random.default_rng(rng)
@@ -141,7 +141,7 @@ def seed_of(rng: RngLike) -> int:
 def normals(n: int, rng: RngLike = None, *, first: int = 0) -> FloatArray:
     """standard normals number first .. first + n - 1 of the c++ stream for rng
 
-    exactly the draws mc_price(rng=rng) uses, so python can rerun the c++ simulation
+    the draws mc_price(rng=rng) uses -> python can redo the c++ simulation
     """
     return _core.normals(n, seed_of(rng), first)
 

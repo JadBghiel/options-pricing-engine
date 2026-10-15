@@ -103,8 +103,8 @@ def test_recovery_over_noise_seeds(seed: int) -> None:
 
 
 def test_the_true_params_sit_inside_every_quote() -> None:
-    # the chain quotes bid and ask around the true price, so at the true params every model vol
-    # is between the bid and ask vols. (not "error ~ 0": a 0.05 tick on a cheap 1 week wing
-    # option is worth 0.16 vol points)
+    # the chain quotes bid and ask around the true price -> at the true params every model vol
+    # is between the bid and ask vols ("error ~ 0" would fail: a 0.05 tick on a cheap 1 week
+    # wing option is worth 0.16 vol points)
     errors = slice_errors(iv_surface(synthetic_chain(junk=False, seed=5)), SPX_LIKE)
     assert all(e.within_spread == 1.0 for e in errors)

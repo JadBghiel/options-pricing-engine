@@ -3,15 +3,15 @@
 raw form (gatheral 2004), k = log(K / F):
 w(k) = a + b (rho (k - m) + sqrt((k - m)^2 + sigma^2))
 a level, b slope of the wings, rho tilt (rho < 0 = the equity skew), m shift, sigma how round
-the bottom is. the wings are straight lines in k, as roger lee's moment formula says they must be
+the bottom is, the wings are straight lines in k, as roger lee's moment formula says they must be
 
 2 kinds of static arbitrage are checked:
-- butterfly (1 expiry): the density of the price at expiry must be >= 0. for a w(k) curve that is
+- butterfly (1 expiry): the density of the price at expiry must be >= 0, for a w(k) curve that is
   g(k) >= 0 (gatheral and jacquier 2014)
 - calendar (2 expiries): w must not decrease w/ T at any k, a later option cant be worth less
 both on the checked range: the quoted strikes plus 10% of their width on each side, where the
-data pins the fit down. far outside it a slice fitted to a narrow range can bend anywhere (g =
--86 at k = -0.35 on the real 1 week slice), so that is only reported. lee's wing bound is part of
+data pins the fit down, far outside it a slice fitted to a narrow range can bend anywhere (g =
+-86 at k = -0.35 on the real 1 week slice) -> reported as a flag, lee's wing bound is part of
 every fit: on the real slices forcing it changed the error by 0.001 vol points at most
 """
 
@@ -27,11 +27,11 @@ from scipy.optimize import least_squares
 from ope.black_scholes import FloatArray, FloatOrArray
 from ope.surface import Surface
 
-# the wide range, only reported: what someone extrapolating the curve would see
+# the wide range, reported as a flag: what someone extrapolating the curve would see
 K_WIDE = np.linspace(-1.5, 1.5, 601)
 # checked range = quoted range +- this share of its width
 MARGIN = 0.1
-# a calendar gap above -this (total variance) is solver tolerance, not arbitrage
+# a calendar gap above -this (total variance) is solver tolerance
 CAL_TOL = 1e-6
 # how hard a penalty pushes back on arbitrage, against residuals of about 1 per bid ask spread
 PENALTY = 1e3
@@ -39,7 +39,7 @@ PENALTY = 1e3
 
 @dataclass(frozen=True)
 class SVIParams:
-    """raw svi. b >= 0, |rho| < 1, sigma > 0 and a + b sigma sqrt(1 - rho^2) >= 0 (the lowest
+    """raw svi: b >= 0, |rho| < 1, sigma > 0 and a + b sigma sqrt(1 - rho^2) >= 0 (the lowest
     total variance can't be negative)"""
 
     a: float
@@ -63,7 +63,7 @@ class SVIParams:
 
     @property
     def lee_ok(self) -> bool:
-        """roger lee's bound on the wings, b (1 + |rho|) <= 2. above it the wings grow too fast
+        """roger lee's bound on the wings, b (1 + |rho|) <= 2, above it the wings grow too fast
         for any price distribution w/ a finite mean"""
         return self.b * (1 + abs(self.rho)) <= 2 + 1e-6
 
@@ -85,7 +85,7 @@ class SVIParams:
         return float(out) if out.ndim == 0 else out
 
     def g(self, k: npt.ArrayLike) -> FloatOrArray:
-        """gatheral and jacquier's g(k). the density of k is g / sqrt(2 pi w) e^{-d2^2 / 2}, so
+        """gatheral and jacquier's g(k), the density of k is g / sqrt(2 pi w) e^{-d2^2 / 2} ->
         g < 0 somewhere = a negative probability = a butterfly that costs less than nothing"""
         kk = np.asarray(k, dtype=np.float64)
         w, w1, w2 = (np.asarray(f(kk)) for f in (self.w, self.w1, self.w2))
@@ -100,7 +100,7 @@ class SVIParams:
 
 @dataclass(frozen=True)
 class SVIFit:
-    """1 expiry's fit. errors in vol points (1 = 1% of vol), unweighted"""
+    """1 expiry's fit, errors in vol points (1 = 1% of vol), unweighted"""
 
     expiry: str
     T: float
@@ -112,7 +112,7 @@ class SVIFit:
     k_lo: float  # the checked range
     k_hi: float
     min_g: float  # min of g(k) on the checked range, < 0 = butterfly arbitrage
-    min_g_wide: float  # the same on K_WIDE, only a flag for extrapolation
+    min_g_wide: float  # the same on K_WIDE, a flag for extrapolation
     penalized: bool  # True if the plain fit had arbitrage and was refit w/ a penalty
 
     @property
@@ -124,7 +124,7 @@ class SVIFit:
 
 
 def _from_x(x: npt.ArrayLike) -> SVIParams:
-    """optimizer vector (vmin, b, rho, m, sigma) -> params. fitting vmin = the lowest total
+    """optimizer vector (vmin, b, rho, m, sigma) -> params, fitting vmin = the lowest total
     variance instead of a turns a + b sigma sqrt(1 - rho^2) >= 0 into a simple bound vmin >= 0"""
     vmin, b, rho, m, s = (float(v) for v in np.asarray(x, dtype=np.float64))
     a = vmin - b * s * math.sqrt(1 - rho * rho)
@@ -144,7 +144,7 @@ def fit_svi(
 ) -> SVIFit:
     """fit raw svi to 1 expiry's vols, least squares on the vol error times the weights
 
-    several starts (a grid over m, sigma and rho), the best one kept. if the result has butterfly
+    several starts (a grid over m, sigma and rho), the best one kept, if the result has butterfly
     arbitrage on the checked range, or goes under floor (the previous expiry's fit) where both
     checked ranges overlap, it is refit from every start (and from the plain fit) w/ a penalty
     on the violations
@@ -160,7 +160,7 @@ def fit_svi(
     margin = MARGIN * (float(kk.max()) - float(kk.min()))
     k_lo, k_hi = float(kk.min()) - margin, float(kk.max()) + margin
     k_chk = np.linspace(k_lo, k_hi, 201)
-    # the floor is compared only where both fits are meant to be used: outside its own range
+    # the floor is compared where both fits are meant to be used: outside its own range
     # the previous fit can be anything (a 1 week slice extrapolated to k = -0.5)
     k_cal = k_chk
     w_floor = None
@@ -201,9 +201,9 @@ def fit_svi(
     min_g = float(np.min(np.asarray(p.g(k_chk))))
     crosses = w_floor is not None and bool(np.any(np.asarray(p.w(k_cal)) < w_floor - CAL_TOL))
     penalized = min_g < -1e-9 or crosses
-    # arbitrage is fixed only when it shows up, not always. a penalty bends the
-    # curve away from the quotes, so the plain fit is kept whenever it is already clean, and a
-    # penalized fit says so (SVIFit.penalized) instead of passing as a normal one
+    # arbitrage is fixed when it shows up, a penalty bends the curve away from the
+    # quotes -> the plain fit is kept whenever it is already clean, and a penalized
+    # fit says it (SVIFit.penalized) and doesnt pass as a normal one
     if penalized:
         tries = [np.asarray(x0, dtype=np.float64) for x0 in starts] + [x]
         p = _from_x(min((solve(x0, True) for x0 in tries), key=lambda xc: xc[1])[0])
@@ -232,9 +232,9 @@ def fit_svi(
 
 
 def fit_svi_surface(surface: Surface, *, calendar: bool = True) -> list[SVIFit]:
-    """1 svi per expiry, shortest first. calendar=True: each fit is kept above the previous one
-    on its checked range (w(k) never decreasing w/ T), by a penalty only if the plain fit
-    goes under it"""
+    """1 svi per expiry, shortest first, calendar=True: each fit is kept above the previous one
+    on its checked range (w(k) not decreasing w/ T), w/ a penalty if the plain fit goes
+    under it"""
     fits: list[SVIFit] = []
     for e in surface.expiries():
         m = surface.rows(e)
@@ -256,8 +256,8 @@ def fit_svi_surface(surface: Surface, *, calendar: bool = True) -> list[SVIFit]:
 
 @dataclass(frozen=True)
 class CalendarCheck:
-    """w(T2) - w(T1) for 2 consecutive expiries, on the overlap of their checked ranges.
-    min_gap < 0 = calendar arbitrage. min_gap_wide: the same on K_WIDE, a flag only"""
+    """w(T2) - w(T1) for 2 consecutive expiries, on the overlap of their checked ranges,
+    min_gap < 0 = calendar arbitrage, min_gap_wide: the same on K_WIDE as a flag"""
 
     expiry_1: str
     expiry_2: str

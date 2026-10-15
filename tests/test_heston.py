@@ -1,8 +1,7 @@
-"""tier 5 validation: heston by its characteristic function and by monte carlo
+"""tier 5 validation: heston by its characteristic function
 
-the semi analytical price is checked against an independent integral (lewis 2000) and against
-black scholes as the vol of vol goes to 0. monte carlo is checked over many seeds, and its
-discretization bias is measured as a bias, separately from the noise
+the semi analytical price compared w/ an independent integral (lewis 2000), and w/ black scholes
+as the vol of vol goes to 0
 """
 
 import math
@@ -16,12 +15,9 @@ from ope.heston import (
     HestonParams,
     heston_cf,
     heston_implied_vol,
-    heston_mc,
-    heston_paths,
     heston_price,
 )
 from ope.implied_volatility import implied_vol
-from ope.monte_carlo import MCResult
 
 # feller violated (2 kappa theta = 0.12 < xi^2 = 0.36): the euler variance goes negative often
 P = HestonParams(v0=0.04, kappa=1.5, theta=0.04, xi=0.6, rho=-0.7)
@@ -84,7 +80,7 @@ def test_cf_tends_to_the_lognormal_one_as_xi_goes_to_0() -> None:
         drift = math.log(S) + (R - 0.5 * sigma**2) * T
         lognormal = np.exp(1j * u * drift - 0.5 * sigma**2 * T * u**2)
         errors.append(np.abs(heston_cf(u, S, T, R, p) - lognormal).max())
-    # linear in xi (5.5e-4, then 5.5e-5). below xi = 1e-5 the formula loses digits instead:
+    # linear in xi (5.5e-4, then 5.5e-5), below xi = 1e-5 the formula loses digits instead:
     # kappa theta / xi^2 multiplies a bracket that is almost 0
     assert errors[1] < 1e-4
     assert errors[0] / errors[1] > 8
@@ -139,8 +135,8 @@ def test_heston_tends_to_black_scholes_as_xi_goes_to_0() -> None:
         p = HestonParams(0.09, 1.5, 0.04, xi, -0.7)  # v0 != theta: the vol moves, deterministically
         bs = float(price("call", S, K, T, R, p.effective_vol(T)))
         gaps.append(abs(heston_price("call", S, K, T, R, p) - bs))
-    # 2.8e-3, 3.0e-4, 3.0e-5: linear in xi once xi is small (the rho xi term leads). at xi = 0.1
-    # the 1st and 2nd order terms nearly cancel, so the gap isnt monotone there
+    # 2.8e-3, 3.0e-4, 3.0e-5: linear in xi once xi is small (the rho xi term leads), at xi = 0.1
+    # the 1st and 2nd order terms nearly cancel -> the gap isnt monotone there
     assert gaps[2] < 1e-4
     assert gaps[0] / gaps[1] > 8
     assert gaps[1] / gaps[2] > 8
@@ -185,87 +181,3 @@ def test_implied_vol_reprices_the_heston_price() -> None:
     assert vol == pytest.approx(
         implied_vol("put", heston_price("put", S, 90.0, T, R, P), S, 90, T, R)
     )
-
-
-# monte carlo
-
-
-def test_mc_interval_holds_the_semi_analytical_price_about_95_percent_of_the_time() -> None:
-    # 64 steps: the bias (about +0.03) is a seventh of the std error at 2,000 paths, so this
-    # tests the noise. the next test measures the bias on its own
-    exact = heston_price("call", S, K, T, R, P)
-    inside = 0
-    for seed in range(200):
-        lo, hi = heston_mc("call", S, K, T, R, P, n_steps=64, n_paths=2_000, rng=seed).ci95
-        inside += lo <= exact <= hi
-    assert 0.90 <= inside / 200 <= 0.99
-
-
-def test_discretization_bias_is_real_and_shrinks_with_steps() -> None:
-    exact = heston_price("call", S, K, T, R, P)
-    few = heston_mc("call", S, K, T, R, P, n_steps=4, n_paths=200_000, rng=1_000)
-    many = heston_mc("call", S, K, T, R, P, n_steps=64, n_paths=200_000, rng=2_000)
-    # 4 steps: about +0.71, far outside the noise -> bias, not bad luck
-    assert few.estimate - exact > 10 * few.std_error
-    assert few.estimate - exact > 0.5
-    assert abs(many.estimate - exact) < 4 * many.std_error
-
-
-@pytest.mark.parametrize("option", ["call", "put"])
-def test_mc_agrees_with_the_semi_analytical_price_for_calls_and_puts(option: str) -> None:
-    p = HestonParams(0.06, 2.0, 0.05, 0.4, -0.5)
-    exact = heston_price(option, S, 95.0, 0.5, R, p, 0.01)  # type: ignore[arg-type]
-    res = heston_mc(
-        option, S, 95.0, 0.5, R, p, 0.01, n_steps=100, n_paths=200_000,  # type: ignore[arg-type]
-        antithetic=True, control_variate=True, rng=3,
-    )  # fmt: skip
-    assert abs(res.estimate - exact) < 4 * res.std_error
-
-
-def test_discounted_stock_stays_a_martingale_with_truncation() -> None:
-    # E[e^{-(r-q)T} S_T] = S even though v goes below 0 on many steps
-    s, v = heston_paths(S, T, R, P, 0.02, n_steps=16, n_paths=200_000, rng=4)
-    assert (v < 0).mean() > 0.1
-    discounted = s[:, -1] * math.exp(-(R - 0.02) * T)
-    se = discounted.std(ddof=1) / math.sqrt(discounted.size)
-    assert abs(discounted.mean() - S) < 4 * se
-
-
-def test_variance_reduction_cuts_the_standard_error() -> None:
-    plain = heston_mc("call", S, 90.0, T, R, P, n_paths=50_000, rng=5)
-    reduced = heston_mc(
-        "call", S, 90.0, T, R, P, n_paths=50_000, antithetic=True, control_variate=True, rng=5
-    )
-    assert plain.std_error / reduced.std_error > 1.5
-
-
-def test_paths_shape_and_reproducibility() -> None:
-    s, v = heston_paths(S, T, R, P, n_steps=10, n_paths=3, rng=7)
-    s2, _ = heston_paths(S, T, R, P, n_steps=10, n_paths=3, rng=np.random.default_rng(7))
-    assert s.shape == v.shape == (3, 11)
-    np.testing.assert_array_equal(s[:, 0], S)
-    np.testing.assert_array_equal(v[:, 0], P.v0)
-    np.testing.assert_array_equal(s, s2)
-    assert np.all(s > 0)
-
-
-def test_mc_same_seed_same_result() -> None:
-    a = heston_mc("put", S, K, T, R, P, n_steps=10, n_paths=1_000, rng=3)
-    b = heston_mc("put", S, K, T, R, P, n_steps=10, n_paths=1_000, rng=np.random.default_rng(3))
-    assert a == b
-    assert isinstance(a, MCResult)
-
-
-def test_mc_inputs_are_checked() -> None:
-    with pytest.raises(ValueError, match="even"):
-        heston_mc("call", S, K, T, R, P, n_paths=1_001, antithetic=True)
-    with pytest.raises(ValueError, match="pairs"):
-        heston_mc("call", S, K, T, R, P, n_paths=2, antithetic=True)
-    with pytest.raises(ValueError, match="n_steps"):
-        heston_mc("call", S, K, T, R, P, n_steps=0)
-    with pytest.raises(ValueError, match="n_paths"):
-        heston_mc("call", S, K, T, R, P, n_paths=1)
-    with pytest.raises(ValueError, match="strike"):
-        heston_mc("call", S, 0.0, T, R, P)
-    with pytest.raises(ValueError, match=">= 1"):
-        heston_paths(S, T, R, P, n_steps=0, n_paths=1)

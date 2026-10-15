@@ -1,10 +1,10 @@
 """a synthetic spx like chain, priced by the library itself: the committed fixture and the test bed
 
-real quotes stay out of git (the ibkr market data agreement doesnt allow passing them on), so the
-notebook, the tests and ci run on this instead. it looks like a real snapshot on purpose: heston
-prices w/ known params, a forward from known r and q, bid ask spreads that widen in the wings,
-prices rounded to the tick, and a few broken quotes of each kind the cleaning must catch. so a
-calibration can be checked against the params that made the chain
+real quotes stay out of git (the ibkr market data agreement doesnt allow passing them on) -> the
+notebook, the tests and ci run on this, it looks like a real snapshot on purpose: heston prices
+w/ known params, a forward from known r and q, bid ask spreads that widen in the wings, prices
+rounded to the tick, and a few broken quotes of each kind the cleaning must catch, a calibration
+can then be compared w/ the params that made the chain
 """
 
 import math
@@ -14,17 +14,16 @@ import numpy as np
 
 from ope.black_scholes import OptionType, _price_and_vega
 from ope.calibration import heston_grid_prices
-from ope.chain import Chain, MetaValue, from_rows, year_fraction
+from ope.chain import Chain, MetaValue, from_rows, pick_strikes, year_fraction
 from ope.heston import HestonParams
 from ope.implied_volatility import implied_vol
-from ope.market import pick_strikes
 
 # a typical index surface: 14% vol now, 19% long run, a steep skew (rho -0.75)
 SPX_LIKE = HestonParams(v0=0.02, kappa=2.5, theta=0.035, xi=0.8, rho=-0.75)
-# a friday close (16:15 new york), fixed so the fixture never changes
+# a friday close (16:15 new york), fixed -> the fixture stays the same
 AS_OF = datetime(2026, 1, 9, 21, 15, tzinfo=UTC)
 EXPIRY_DAYS = (7, 14, 28, 63, 91, 182, 364)
-# broken quotes added on top, per kind (the cleaning report must find exactly these)
+# broken quotes added on top, per kind (the cleaning must catch each one)
 JUNK = {"one sided": 6, "crossed": 4, "stale": 5, "wide": 5, "no interest": 6, "out of bounds": 3}
 
 
@@ -49,8 +48,8 @@ def synthetic_chain(
     """calls and puts at every strike, priced w/ params, quoted around the true price
 
     vol_spread: the bid ask width in vol at the money (0.004 = 0.4 vol points), wider in the
-    wings. the true price is inside every bid ask, the mid is off by up to 30% of the half
-    spread. junk=True adds the broken quotes of JUNK, counted in meta["junk"]
+    wings, the true price is inside every bid ask, the mid is off by up to 30% of the half
+    spread, junk=True adds the broken quotes of JUNK, counted in meta["junk"]
     """
     rng = np.random.default_rng(seed)
     grid = np.arange(0.5 * S, 1.5 * S, 5.0)

@@ -1,9 +1,9 @@
 """heston calibrated to a whole implied vol surface at once
 
 1 set of 5 numbers (v0, kappa, theta, xi, rho) for every expiry together, found by least squares
-on the vol errors, from several starting points. heston_price is 4 to 9 ms per strike (2
-adaptive integrals each), too slow for thousands of evaluations, so the prices here come from 1
-shared quadrature grid per maturity, checked against heston_price (learning/verify/tier6/v3b)
+on the vol errors, from several starting points, heston_price is 4 to 9 ms per strike (2
+adaptive integrals each), too slow for thousands of evaluations -> the prices here come from 1
+shared quadrature grid per maturity, compared w/ heston_price in learning/verify/tier6/v3b
 """
 
 import functools
@@ -50,16 +50,16 @@ def heston_probabilities(
 ) -> tuple[FloatArray, FloatArray]:
     """P1, P2 for strikes kf = K / F of 1 maturity, on 1 shared grid
 
-    same gil pelaez integrals as heston_price, in forward units (F = 1). phi(u) and phi(u - i)
+    same gil pelaez integrals as heston_price, in forward units (F = 1), phi(u) and phi(u - i)
     are computed once on the nodes, then each strike is 1 row of a matrix product
     """
     x = np.atleast_1d(np.asarray(kf, dtype=np.float64))
     log_k = np.log(x)
     U = _cutoff(T, params)
     # LEARNING NOTE: the nodes follow the oscillation of e^{-iu log(K/F)}: it turns
-    # U |log(K/F)| / 2 pi times over [0, U]. w/ a fixed 64 to 256 nodes the grid was off by up to
-    # 0.09 F at 1 to 2 weeks and k = -0.6 (U = 2327, 220 turns). 32 + 12 nodes per turn gave
-    # 1e-9 F, 1e-4 vol points, against heston_price everywhere we tried
+    # U |log(K/F)| / 2 pi times over [0, U], w/ a fixed 64 to 256 nodes the grid was off by up to
+    # 0.09 F at 1 to 2 weeks and k = -0.6 (U = 2327, 220 turns), 32 + 12 nodes per turn gave
+    # 1e-9 F, 1e-4 vol points vs heston_price on every case we tried
     turns = U * float(np.max(np.abs(log_k))) / (2 * math.pi)
     n = int(32 * math.ceil((32 + 12 * turns) / 32))
     xs, ws = _nodes(n)
@@ -81,7 +81,7 @@ def heston_grid_prices(
     K: npt.ArrayLike,
     params: HestonParams,
 ) -> FloatArray:
-    """european heston prices for the strikes K of 1 maturity, w/ forward F and discount D.
+    """european heston prices for the strikes K of 1 maturity, w/ forward F and discount D,
     option is "call", "put" or an array of them (1 per strike)"""
     strikes = np.atleast_1d(np.asarray(K, dtype=np.float64))
     p1, p2 = heston_probabilities(strikes / F, T, params)
@@ -105,7 +105,7 @@ class SliceError:
 
 @dataclass(frozen=True)
 class StartResult:
-    """where 1 run of the optimizer started and ended. rms over every quote, weighted"""
+    """where 1 run of the optimizer started and ended, rms over every quote, weighted"""
 
     start: HestonParams
     params: HestonParams
@@ -133,7 +133,7 @@ def _params(x: npt.ArrayLike) -> HestonParams:
 
 
 class _Problem:
-    """the surface regrouped by expiry once, so each evaluation is 1 grid per maturity"""
+    """the surface regrouped by expiry once -> each evaluation is 1 grid per maturity"""
 
     def __init__(self, surface: Surface) -> None:
         self.slices = []
@@ -193,15 +193,16 @@ def calibrate_heston(
 ) -> HestonCalibration:
     """the heston params that best fit every quote of the surface at once
 
-    n_starts points from a scrambled sobol sequence (seeded, so the same surface and seed give
-    the same numbers), each run to convergence, the lowest cost kept. every start is reported
+    n_starts points from a scrambled sobol sequence (seeded: the same surface and seed give the
+    same numbers), each one run to convergence, the lowest cost kept, every start is reported
     """
     t0 = time.perf_counter()
     problem = _Problem(surface)
     # LEARNING NOTE: several starts, all reported, bc the heston fit has flat valleys: kappa and
-    # xi trade off (a fast pull back w/ more noise looks like a slow one w/ less), so 1 start
-    # can stop in a local minimum and look converged. sobol points cover the box evenly, and
-    # the seed makes the whole calibration rerun to the same numbers
+    # xi trade off (a fast pull back w/ more noise looks like a slow one w/ less), 1 start
+    # can stop in a local minimum and look converged, but it might not be the global minimum
+    # sobol points cover the box evenly, and the seed makes the whole calibration rerun to the
+    # same numbers
     sobol = qmc.Sobol(5, scramble=True, seed=seed)
     starts = qmc.scale(sobol.random(n_starts), *START_BOX)
     runs = []

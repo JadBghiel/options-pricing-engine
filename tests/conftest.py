@@ -1,7 +1,7 @@
-"""shared fixtures. impl runs a test twice: on the python modules and on the c++ core
+"""shared fixtures, impl runs a test twice: on the python modules and on the c++ core
 
 ope and ope.cpp expose the same names (price, greeks, mc_price, crr_price...) w/ the same
-signatures, so a test written against impl checks both implementations
+signatures -> a test written on impl covers both implementations
 """
 
 from types import ModuleType

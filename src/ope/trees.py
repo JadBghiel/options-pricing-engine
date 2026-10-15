@@ -1,6 +1,6 @@
 """cox ross rubinstein binomial tree for european and american options
 
-the stock moves up by u or down by d = 1/u at each of n steps. we price backwards from expiry:
+the stock moves up by u or down by d = 1/u at each of n steps, we price backwards from expiry:
 at each node the option is worth its discounted risk neutral average one step later, and an
 american option is also worth at least what exercising right now pays
 """
@@ -52,16 +52,16 @@ def backward_step(
 ) -> FloatArray:
     """option values 1 time step earlier: n+1 values at step i+1 -> n values at step i
 
-    each node is worth disc * (p * up child + (1 - p) * down child). for an american option,
+    each node is worth disc * (p * up child + (1 - p) * down child), for an american option,
     pass the exercise values at step i: the node is then worth the larger of the two
     """
     v = np.asarray(values, dtype=np.float64)
     cont = disc * (p * v[1:] + (1.0 - p) * v[:-1])
     if exercise is None:
         return np.asarray(cont, dtype=np.float64)
-    # LEARNING NOTE: the early exercise check is just a max: the holder of an american option
-    # compares keeping it (the discounted average of the next step) with exercising now, and
-    # takes the better one. that single max is the whole difference w/ a european option
+    # LEARNING NOTE: the early exercise check is a max: the holder of an american option
+    # compares keeping it (the discounted average of the next step) w/ exercising now, and
+    # takes the better one, that max is the whole difference w/ a european option
     return np.asarray(np.maximum(cont, np.asarray(exercise, dtype=np.float64)), dtype=np.float64)
 
 

@@ -81,10 +81,10 @@ def test_exact_recovery_without_noise() -> None:
 
 @pytest.mark.parametrize("seed", range(10))
 def test_the_curve_comes_back_through_noise(seed: int) -> None:
-    # 0.3 vol points of noise: the params trade off (rho moves by up to 0.2 on this range), the
-    # curve doesnt. 5 params on 25 points average the noise down to about 0.3 sqrt(5 / 25) =
-    # 0.13 rms (0.06 to 0.20 measured over these seeds). the ends are the least pinned down:
-    # up to 0.47 at k = -0.45, so the max is held to 2 noise sd
+    # 0.3 vol points of noise: the params trade off (rho moves by up to 0.2 on this range) and
+    # the curve holds, 5 params on 25 points average the noise down to about 0.3 sqrt(5 / 25) =
+    # 0.13 rms (0.06 to 0.20 measured over these seeds), the ends are the least pinned down:
+    # up to 0.47 at k = -0.45 -> the max is held to 2 noise sd
     k = np.linspace(-0.45, 0.2, 25)
     true = np.asarray(SPX_SLICE.vol(k, 0.5))
     noisy = true + np.random.default_rng(seed).normal(0, 0.003, k.size)

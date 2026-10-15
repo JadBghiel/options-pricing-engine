@@ -1,14 +1,14 @@
-"""heston stochastic volatility: european prices by monte carlo and by the characteristic function
+"""heston stochastic volatility: european prices by the characteristic function (the monte carlo
+is in ope.heston_mc)
 
 dS = (r - q) S dt + sqrt(v) S dW1
 dv = kappa (theta - v) dt + xi sqrt(v) dW2,   corr(dW1, dW2) = rho
 
 the variance v has its own noise (xi, the vol of vol) and is pulled back to theta at speed
-kappa. rho < 0 (stock down -> vol up) gives the downward skew seen on equity indices
+kappa, rho < 0 (stock down -> vol up) gives the downward skew seen on equity indices
 """
 
 import math
-from collections.abc import Iterator
 from dataclasses import dataclass
 from typing import Literal
 
@@ -16,10 +16,8 @@ import numpy as np
 import numpy.typing as npt
 from scipy.integrate import quad
 
-from ope.black_scholes import FloatArray, FloatOrArray, OptionType, _check_option
-from ope.exotics import _control_variate, _result
+from ope.black_scholes import FloatOrArray, OptionType, _check_option
 from ope.implied_volatility import implied_vol
-from ope.monte_carlo import MCResult, RngLike, _rng, payoff
 
 CFForm = Literal["trap", "original"]
 ComplexArray = npt.NDArray[np.complex128]
@@ -28,7 +26,7 @@ ComplexArray = npt.NDArray[np.complex128]
 @dataclass(frozen=True)
 class HestonParams:
     """v0 variance today, kappa speed back to theta, theta long run variance, xi vol of vol,
-    rho correlation between the stock and its variance. variances, so 0.04 = 20% vol"""
+    rho correlation between the stock and its variance, in variance terms: 0.04 = 20% vol"""
 
     v0: float
     kappa: float
@@ -50,7 +48,7 @@ class HestonParams:
 
     @property
     def feller(self) -> bool:
-        """2 kappa theta >= xi^2: the pull to theta beats the noise, the true v never hits 0"""
+        """2 kappa theta >= xi^2: the pull to theta beats the noise, the true v stays above 0"""
         return 2 * self.kappa * self.theta >= self.xi**2
 
     def effective_vol(self, T: float) -> float:
@@ -84,9 +82,9 @@ def heston_cf(
 ) -> ComplexArray:
     """E[exp(i u log S_T)], the characteristic function of log S_T, for real or complex u
 
-    form "trap": albrecher et al. 2007, "the little heston trap", continuous in u.
+    form "trap": albrecher et al. 2007, "the little heston trap", continuous in u
     "original": heston 1993, same function on paper but its complex log jumps by 2 pi for long
-    maturities, kept to show the problem. both lose digits below xi = 1e-5: kappa theta / xi^2
+    maturities, kept to show the problem, both lose digits below xi = 1e-5: kappa theta / xi^2
     then multiplies a bracket that is almost 0
     """
     if form not in ("trap", "original"):
@@ -96,10 +94,10 @@ def heston_cf(
     iu = 1j * uu
     b = p.kappa - p.rho * p.xi * iu
     d = np.sqrt(b * b + p.xi**2 * (iu + uu * uu))
-    # LEARNING NOTE: d and -d both solve the riccati equations, the 2 forms only pick a different
-    # sign. heston's choice has e^{+dT}, and log((1 - g e^{dT}) / (1 - g)) crosses the negative
+    # LEARNING NOTE: d and -d both solve the riccati equations, the 2 forms pick a different
+    # sign, heston's choice has e^{+dT}, and log((1 - g e^{dT}) / (1 - g)) crosses the negative
     # real axis as u grows, where numpy's log jumps by 2 pi -> a wrong price (16.39 instead of
-    # 29.09 for our 5 year atm call, fine at 1 year). w/ -d (the trap form) the argument stays
+    # 29.09 for our 5 year atm call, fine at 1 year), w/ -d (the trap form) the argument stays
     # on 1 side, and e^{-dT} -> 0 where e^{dT} overflows to nan
     if form == "trap":
         bd = b - d
@@ -149,7 +147,7 @@ def heston_price(
     """european price under heston, semi analytical (1 numerical integral per probability)
 
     call = S e^{-qT} P1 - K e^{-rT} P2, the black scholes formula w/ N(d1), N(d2) replaced by
-    heston's probabilities. K can be an array (a chain), S and T are scalars
+    heston's probabilities, K can be an array (a chain), S and T are scalars
     """
     _check_option(option)
     _check_market(S, T)
@@ -163,7 +161,7 @@ def heston_price(
         k_disc = float(k) * math.exp(-r * T)
         if option == "call":
             out[idx] = s_disc * p1 - k_disc * p2
-        else:  # from 1 - P, not from parity, so a deep itm call doesnt eat the put's digits
+        else:  # from 1 - P instead of parity -> a deep itm call doesnt eat the put's digits
             out[idx] = k_disc * (1 - p2) - s_disc * (1 - p1)
     return float(out) if out.ndim == 0 else out
 
@@ -189,123 +187,3 @@ def heston_implied_vol(
         value = float(heston_price(option, S, float(k), T, r, params, q))
         out[idx] = implied_vol(option, value, S, float(k), T, r, q)
     return float(out) if out.ndim == 0 else out
-
-
-# monte carlo
-
-
-def _walk(
-    S: float,
-    T: float,
-    r: float,
-    params: HestonParams,
-    q: float,
-    n_steps: int,
-    n_paths: int,
-    antithetic: bool,
-    rng: np.random.Generator,
-) -> Iterator[tuple[FloatArray, FloatArray]]:
-    """(log S, v) after each of the n_steps euler steps. w/ antithetic, path i + n/2 uses -z"""
-    p = params
-    dt = T / n_steps
-    sq_dt = math.sqrt(dt)
-    rho_bar = math.sqrt(1.0 - p.rho**2)
-    x = np.full(n_paths, math.log(S))
-    v = np.full(n_paths, p.v0)
-    for _ in range(n_steps):
-        z = rng.standard_normal((2, n_paths // 2 if antithetic else n_paths))
-        if antithetic:
-            z = np.concatenate([z, -z], axis=1)
-        z_s = z[0]
-        z_v = p.rho * z_s + rho_bar * z[1]  # correlated w/ the stock's draw
-        # LEARNING NOTE: full truncation (lord et al. 2010). euler lets v go below 0, and sqrt(v)
-        # then fails. v itself is left negative, but every term that uses it takes max(v, 0).
-        # w/ the feller condition violated it is common: 37% of steps at 2 steps a year, 8% at
-        # 256 on our example. lord et al. found it the least biased of the simple fixes
-        # (reflecting |v|, or truncating v itself)
-        v_pos = np.maximum(v, 0.0)
-        vol = np.sqrt(v_pos) * sq_dt
-        x = x + (r - q - 0.5 * v_pos) * dt + vol * z_s  # log euler: E[S] stays exact
-        v = v + p.kappa * (p.theta - v_pos) * dt + p.xi * vol * z_v
-        yield x, v
-
-
-def _check_mc(n_steps: int, n_paths: int, antithetic: bool) -> None:
-    if n_steps < 1:
-        raise ValueError("n_steps must be >= 1")
-    if n_paths < 2:
-        raise ValueError("n_paths must be >= 2 to estimate a standard error")
-    if antithetic and n_paths % 2:
-        raise ValueError("antithetic sampling needs an even n_paths (paths come in pairs)")
-    if antithetic and n_paths < 4:
-        raise ValueError("antithetic sampling needs n_paths >= 4 (2 independent pairs)")
-
-
-def heston_paths(
-    S: float,
-    T: float,
-    r: float,
-    params: HestonParams,
-    q: float = 0.0,
-    *,
-    n_steps: int,
-    n_paths: int,
-    rng: RngLike = None,
-) -> tuple[FloatArray, FloatArray]:
-    """stock and variance paths, each shape (n_paths, n_steps + 1), column 0 = today
-
-    the variance is the raw euler one, so it can dip below 0 where the pricer uses max(v, 0)
-    """
-    _check_market(S, T)
-    if n_steps < 1 or n_paths < 1:
-        raise ValueError("n_steps and n_paths must be >= 1")
-    s_out = np.empty((n_paths, n_steps + 1))
-    v_out = np.empty((n_paths, n_steps + 1))
-    s_out[:, 0], v_out[:, 0] = S, params.v0
-    walk = _walk(S, T, r, params, q, n_steps, n_paths, False, _rng(rng))
-    for i, (x, v) in enumerate(walk, start=1):
-        s_out[:, i], v_out[:, i] = np.exp(x), v
-    return s_out, v_out
-
-
-def heston_mc(
-    option: OptionType,
-    S: float,
-    K: float,
-    T: float,
-    r: float,
-    params: HestonParams,
-    q: float = 0.0,
-    *,
-    n_steps: int = 100,
-    n_paths: int = 100_000,
-    antithetic: bool = False,
-    control_variate: bool = False,
-    rng: RngLike = None,
-) -> MCResult:
-    """european price under heston by monte carlo, full truncation euler w/ n_steps time steps
-
-    the standard error only measures the noise. the euler scheme also has a bias that shrinks
-    w/ n_steps (+1.14 at 2 steps, about +0.03 at 64 on our 1 year atm call), compare to
-    heston_price to see it. control_variate: the discounted stock, its mean S e^{-qT} is exact
-    in this scheme too
-    """
-    _check_option(option)
-    _check_market(S, T)
-    if not (math.isfinite(K) and K > 0):
-        raise ValueError("strike K must be finite and > 0")
-    _check_mc(n_steps, n_paths, antithetic)
-    x = np.empty(0)
-    for log_s, _ in _walk(S, T, r, params, q, n_steps, n_paths, antithetic, _rng(rng)):
-        x = log_s  # only S_T matters for a european payoff
-    s_t = np.exp(x)
-    disc = math.exp(-r * T)
-    pay = disc * payoff(option, s_t, K)
-    stock = disc * s_t
-    if antithetic:  # standard error from the pair averages, as in tier 2
-        half = n_paths // 2
-        pay = 0.5 * (pay[:half] + pay[half:])
-        stock = 0.5 * (stock[:half] + stock[half:])
-    if control_variate:
-        pay = _control_variate(pay, stock, S * math.exp(-q * T))
-    return _result(pay, n_paths)

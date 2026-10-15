@@ -1,6 +1,6 @@
 """implied volatility: the sigma that makes the black scholes price equal a quoted price
 
-1 option at a time (scalars). safeguarded newton: newton steps on vega, kept inside a
+1 option at a time (scalars), safeguarded newton: newton steps on vega, kept inside a
 bracket [lo, hi] that always holds the root, w/ a bisection step whenever newton would
 jump out of it
 """
@@ -37,8 +37,8 @@ def implied_vol_result(
 ) -> ImpliedVolResult:
     """sigma such that the black scholes price equals price, w/ iteration counts
 
-    stops when |model price - price| <= tol * max(1, price), or when the step in sigma is
-    below 1e-15 relative. raises ValueError if the price breaks the no arbitrage bounds,
+    it stops when |model price - price| <= tol * max(1, price), or when the step in sigma is
+    below 1e-15 relative, it raises ValueError if the price breaks the no arbitrage bounds,
     since no sigma can produce it
     """
     _check_option(option)
@@ -56,7 +56,7 @@ def implied_vol_result(
     if price <= lo_bound + price_tol:
         return ImpliedVolResult(0.0, 0, 0, 0)
 
-    # price is increasing in sigma, so double hi until the root is inside [lo, hi]
+    # the price grows w/ sigma -> double hi until the root is inside [lo, hi]
     lo, hi = 0.0, 1.0
     while _price_and_vega(option, S, K, T, r, hi, q)[0] < price:
         lo, hi = hi, 2.0 * hi
@@ -64,8 +64,8 @@ def implied_vol_result(
             raise ValueError(f"price {price} implies a volatility above {_SIGMA_MAX}")
 
     # LEARNING NOTE: start at the inflection point sigma* = sqrt(2|ln(F/K)|/T), where vega
-    # peaks in sigma. the price is convex in sigma below it and concave above, so newton
-    # from there walks to the root monotonically (Manaster and Koehler, 1982). outside the
+    # peaks in sigma, the price is convex in sigma below it and concave above, so newton
+    # from there walks to the root monotonically (Manaster and Koehler, 1982), outside the
     # bracket we start in the middle and let the safeguard catch overshoots, starting at the
     # nearest end is also monotone but ~5 iterations slower on deep OTM short dated options
     forward = S * math.exp((r - q) * T)
@@ -84,7 +84,7 @@ def implied_vol_result(
             lo = sigma
 
         # LEARNING NOTE: deep ITM/OTM or short dated, vega is ~0 and the newton step
-        # diff/vega is huge (or vega underflows to 0). instead of a vega threshold to tune,
+        # diff/vega is huge (or vega underflows to 0), instead of a vega threshold to tune,
         # any step that leaves the bracket becomes a bisection step, which always halves it
         candidate = sigma - diff / vega if vega > 0 else math.nan
         if lo < candidate < hi:

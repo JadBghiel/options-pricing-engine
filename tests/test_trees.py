@@ -49,7 +49,7 @@ def test_backward_step_by_hand() -> None:
 
 
 def test_hull_five_step_american_put(impl: ModuleType) -> None:
-    # Hull, binomial trees: S=50, K=50, T=5 months, r=10%, sigma=40%, 5 steps -> about 4.49
+    # hull, binomial trees: S=50, K=50, T=5 months, r=10%, sigma=40%, 5 steps -> about 4.49
     args = (50.0, 50.0, 5 / 12, 0.10, 0.40)
     tree = impl.crr_price("put", *args, steps=5, american=True)
     assert tree == pytest.approx(_naive_tree("put", *args, n=5), abs=1e-12)

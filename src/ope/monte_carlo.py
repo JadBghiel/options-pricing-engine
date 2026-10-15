@@ -1,8 +1,8 @@
 """monte carlo pricer for european options under black scholes (geometric brownian motion)
 
-the stock price at expiry is simulated exactly in 1 step, so there is no time stepping error.
-every function takes the random generator (or a seed) explicitly, so runs are reproducible.
-inputs are scalars: 1 option per call, n_paths random scenarios for it
+the stock price at expiry is simulated in 1 exact step -> no time stepping error, every func
+takes the random generator (or a seed) as an argument -> runs are reproducible, inputs are
+scalars: 1 option per call, n_paths random scenarios for it
 """
 
 import math
@@ -58,8 +58,8 @@ def gbm_terminal(
     S_T = S * exp((r - q - sigma^2/2) T + sigma sqrt(T) z)
     """
     # LEARNING NOTE: the gbm solution is exact in log space: log S_T is normal w/ mean
-    # log S + (r - q - sigma^2/2) T and variance sigma^2 T. so 1 normal draw per path gives S_T
-    # w/ no discretization error, whatever T is. the -sigma^2/2 keeps E[S_T] = S e^{(r-q)T}
+    # log S + (r - q - sigma^2/2) T and variance sigma^2 T -> 1 normal draw per path gives S_T
+    # w/ no discretization error, whatever T is, the -sigma^2/2 keeps E[S_T] = S e^{(r-q)T}
     zz = np.asarray(z, dtype=np.float64)
     drift = (r - q - 0.5 * sigma**2) * T
     return np.asarray(S * np.exp(drift + sigma * math.sqrt(T) * zz), dtype=np.float64)
@@ -89,9 +89,9 @@ def mc_price(
 ) -> MCResult:
     """price = average of the discounted payoffs over n_paths simulated expiries
 
-    antithetic: each draw z is paired w/ -z. control_variate: corrects the estimate w/ the
-    discounted stock price, whose true average S e^{-qT} is known. both reduce the standard
-    error at the same n_paths. pass rng (a seed or a Generator) to make the run reproducible
+    antithetic: each draw z is paired w/ -z, control_variate: corrects the estimate w/ the
+    discounted stock price, whose true average S e^{-qT} is known, both reduce the standard
+    error at the same n_paths, pass rng (a seed or a Generator) to make the result reproducible
     """
     _check_option(option)
     _check_inputs(S, K, T, sigma, n_paths)
@@ -118,8 +118,8 @@ def mc_price_from_normals(
 ) -> MCResult:
     """the mc_price estimator on given standard normals, 1 path per draw (2 w/ antithetic)
 
-    feeding the same z to this and to ope.cpp.mc_price_from_normals checks the c++ port
-    exactly, since c++ cant reproduce numpy's random stream
+    feeding the same z to this and to ope.cpp.mc_price_from_normals compares the c++ port draw
+    for draw, c++ cant reproduce numpy's random stream
     """
     zz = np.asarray(z, dtype=np.float64).ravel()
     n_paths = 2 * zz.size if antithetic else zz.size
@@ -136,17 +136,17 @@ def mc_price_from_normals(
     y = disc * s_t  # control, its true mean is known
 
     if antithetic:
-        # LEARNING NOTE: a path and its mirror are not independent, so the standard error has
-        # to come from the n/2 pair averages. treating the n payoffs as independent draws
+        # LEARNING NOTE: a path and its mirror are dependent -> the standard error has
+        # to come from the n/2 pair averages, treating the n payoffs as independent draws
         # would report a standard error that is too small
         s_mirror = gbm_terminal(S, T, r, sigma, -zz, q)
         x = 0.5 * (x + disc * payoff(option, s_mirror, K))
         y = 0.5 * (y + disc * s_mirror)
 
     if control_variate:
-        # LEARNING NOTE: when the simulated stocks come out high on average, so do the call
-        # payoffs. we know the true average of the discounted stock (S e^{-qT}), so we remove
-        # beta times the sample's error on it. beta is the regression slope of payoff on
+        # LEARNING NOTE: when the simulated stocks come out high on average, the call payoffs
+        # do too, we know the true average of the discounted stock (S e^{-qT}) -> we remove
+        # beta times the sample's error on it, beta is the regression slope of payoff on
         # stock, the choice that cuts the variance the most
         cov = np.cov(x, y)
         beta = float(cov[0, 1] / cov[1, 1]) if cov[1, 1] > 0 else 0.0
@@ -173,7 +173,7 @@ def mc_delta(
     """delta by monte carlo, 3 ways, each w/ its own standard error
 
     bump: reprice w/ S +- h on the same random draws (common random numbers), h = 1% of S
-    by default. pathwise: differentiate each path's payoff w/ respect to S. likelihood_ratio:
+    by default, pathwise: differentiate each path's payoff w/ respect to S, likelihood_ratio:
     weight each payoff by the derivative of the log density of S_T w/ respect to S
     """
     _check_option(option)

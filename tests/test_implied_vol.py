@@ -42,7 +42,7 @@ def test_newton_needs_few_steps_near_the_money() -> None:
 
 
 def test_bisection_kicks_in_when_newton_overshoots() -> None:
-    # found by a random search: the inflection start is above the first bracket [0, 1], so
+    # found by a random search: the inflection start is above the first bracket [0, 1] ->
     # newton starts at 0.5 in the convex region and its 1st steps overshoot the bracket
     args = (100.0, 225.65540010084422, 0.6991518512855576, 0.0918471623936054)
     q, sigma = 0.00574663166404526, 0.9296956867874604
@@ -95,8 +95,8 @@ def test_expiry_raises() -> None:
 
 
 def test_price_needing_absurd_vol_raises() -> None:
-    # T = 1e-8 -> even sigma = 1024 is only sigma*sqrt(T) = 0.1, the call is worth ~2.85, far
-    # under its bound of 42. w/ a normal T the price hits the bound exactly long before
+    # T = 1e-8 -> even sigma = 1024 gives sigma*sqrt(T) = 0.1, the call is worth ~2.85, far
+    # under its bound of 42. w/ a normal T the price hits the bound long before
     with pytest.raises(ValueError, match="above"):
         implied_vol("call", 41.0, 42, 40, 1e-8, 0.10)
 

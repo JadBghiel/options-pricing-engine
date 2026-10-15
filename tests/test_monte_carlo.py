@@ -1,8 +1,8 @@
 """tier 2 validation: monte carlo prices and deltas vs the tier 1 closed form
 
-every test uses fixed seeds, so it gives the same answer on every run. the statistical claims
-(the 95% interval holds the true price about 95% of the time, the standard error matches the
-real spread) are checked over many seeds, not on 1 lucky seed
+every test uses fixed seeds -> the same answer on every run, the statistical claims (the 95%
+interval holds the true price about 95% of the time, the standard error matches the real
+spread) are tested over many seeds instead of 1 lucky seed
 """
 
 import math
@@ -16,7 +16,7 @@ from ope.black_scholes import greeks, price
 from ope.monte_carlo import MCResult, gbm_terminal, mc_delta, mc_price, payoff
 
 Option = Literal["call", "put"]
-HULL = (42.0, 40.0, 0.5, 0.10, 0.20)  # S, K, T, r, sigma
+hull = (42.0, 40.0, 0.5, 0.10, 0.20)  # S, K, T, r, sigma
 
 
 # simulation
@@ -55,11 +55,11 @@ def test_payoff() -> None:
 def test_95_interval_holds_the_closed_form_about_95_percent_of_the_time(
     impl: ModuleType, option: Option, antithetic: bool, control: bool
 ) -> None:
-    exact = float(price(option, *HULL))
+    exact = float(price(option, *hull))
     inside = 0
     for seed in range(200):
         lo, hi = impl.mc_price(
-            option, *HULL, n_paths=4_000, antithetic=antithetic, control_variate=control, rng=seed
+            option, *hull, n_paths=4_000, antithetic=antithetic, control_variate=control, rng=seed
         ).ci95
         inside += lo <= exact <= hi
     assert 0.90 <= inside / 200 <= 0.99
@@ -71,7 +71,7 @@ def test_standard_error_matches_the_real_spread(
 ) -> None:
     runs = [
         impl.mc_price(
-            "call", *HULL, n_paths=4_000, antithetic=antithetic, control_variate=control, rng=s
+            "call", *hull, n_paths=4_000, antithetic=antithetic, control_variate=control, rng=s
         )
         for s in range(300)
     ]
@@ -83,7 +83,7 @@ def test_standard_error_matches_the_real_spread(
 def test_variance_reduction_cuts_the_standard_error_at_equal_paths(impl: ModuleType) -> None:
     def se(antithetic: bool, control: bool) -> float:
         return impl.mc_price(
-            "call", *HULL, n_paths=200_000, antithetic=antithetic, control_variate=control, rng=7
+            "call", *hull, n_paths=200_000, antithetic=antithetic, control_variate=control, rng=7
         ).std_error
 
     plain = se(False, False)
@@ -95,13 +95,13 @@ def test_variance_reduction_cuts_the_standard_error_at_equal_paths(impl: ModuleT
 def test_zero_vol_is_exact(impl: ModuleType) -> None:
     res = impl.mc_price("call", 100, 90, 1, 0.05, 0.0, n_paths=10, rng=0)
     assert res.estimate == pytest.approx(100 - 90 * math.exp(-0.05), rel=1e-12)
-    assert res.std_error < 1e-12  # only rounding noise is left, every path is the same
+    assert res.std_error < 1e-12  # rounding noise is all that's left, every path is the same
 
 
 def test_same_seed_same_result_and_generator_accepted(impl: ModuleType) -> None:
-    a = impl.mc_price("put", *HULL, n_paths=1_000, rng=3)
-    b = impl.mc_price("put", *HULL, n_paths=1_000, rng=np.random.default_rng(3))
-    c = impl.mc_price("put", *HULL, n_paths=1_000, rng=4)
+    a = impl.mc_price("put", *hull, n_paths=1_000, rng=3)
+    b = impl.mc_price("put", *hull, n_paths=1_000, rng=np.random.default_rng(3))
+    c = impl.mc_price("put", *hull, n_paths=1_000, rng=4)
     assert a == b
     assert a != c
 
@@ -119,14 +119,14 @@ def test_ci95_is_symmetric_around_the_estimate() -> None:
 def test_delta_matches_the_closed_form_within_its_standard_error(
     option: Option, method: str
 ) -> None:
-    exact = float(greeks(option, *HULL).delta)
-    res = mc_delta(option, *HULL, method=method, n_paths=200_000, rng=11)  # type: ignore[arg-type]
+    exact = float(greeks(option, *hull).delta)
+    res = mc_delta(option, *hull, method=method, n_paths=200_000, rng=11)  # type: ignore[arg-type]
     assert abs(res.estimate - exact) < 4 * res.std_error
 
 
 def test_likelihood_ratio_is_noisier_than_pathwise() -> None:
     se = {
-        m: mc_delta("call", *HULL, method=m, n_paths=200_000, rng=5).std_error  # type: ignore[arg-type]
+        m: mc_delta("call", *hull, method=m, n_paths=200_000, rng=5).std_error  # type: ignore[arg-type]
         for m in ("bump", "pathwise", "likelihood_ratio")
     }
     assert se["likelihood_ratio"] > 2.5 * se["pathwise"]

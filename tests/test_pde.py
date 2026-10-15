@@ -17,7 +17,7 @@ Option = Literal["call", "put"]
 def test_european_pde_converges_to_black_scholes(option: Option, args: tuple[float, ...]) -> None:
     exact = float(price(option, *args))
     # at 400 x 400 the error is ~1e-4 absolute on small prices, ~3e-5 relative on big ones, and
-    # shrinks ~4x per grid doubling: so the larger of an absolute floor and a relative bound
+    # shrinks ~4x per grid doubling -> the larger of an absolute floor and a relative bound
     assert pde_price(option, *args, n_space=400, n_time=400) == pytest.approx(
         exact, rel=5e-5, abs=2e-4
     )
@@ -56,7 +56,7 @@ def test_put_exercise_boundary_rises_to_the_strike() -> None:
     sol = pde_solve("put", 50, 50, 5 / 12, 0.10, 0.40, american=True, n_space=300, n_time=300)
     b = sol.boundary[~np.isnan(sol.boundary)]
     assert np.all(b < 50)
-    assert np.all(np.diff(b) >= -1e-9)  # never falls as expiry gets closer
+    assert np.all(np.diff(b) >= -1e-9)  # doesnt fall as expiry gets closer
     assert b[-1] > 0.9 * 50  # right before expiry, exercise starts close to the strike
     assert np.isnan(
         pde_solve("put", 50, 50, 5 / 12, 0.10, 0.40, n_space=50, n_time=5).boundary
