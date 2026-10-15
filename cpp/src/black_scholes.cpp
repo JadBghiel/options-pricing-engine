@@ -42,7 +42,7 @@ void check(double S, double K, double T, double r, double sigma, double q) {
     }
 }
 
-// assumes check() passed. same operation order as python so the rounding mostly matches too
+// assumes check() passed, same operation order as python -> the rounding mostly matches too
 Market prepare(double S, double K, double T, double r, double sigma, double q) {
     Market m{};
     m.df_r = std::exp(-r * T);
@@ -51,7 +51,7 @@ Market prepare(double S, double K, double T, double r, double sigma, double q) {
     const double vol_sqrt_T = sigma * m.sqrt_T;
     m.degenerate = vol_sqrt_T == 0.0 || S == 0.0;
     if (m.degenerate) {
-        // no randomness left: d1, d2 -> +-inf so N(d) is a 0/1 indicator on F > K, see the
+        // no randomness left: d1, d2 -> +-inf, N(d) is a 0/1 indicator on F > K, see the
         // learning note in black_scholes.py
         m.d1 = m.d2 = S * m.df_q > K * m.df_r ? inf : -inf;
     } else {
@@ -106,8 +106,8 @@ constexpr std::size_t min_options_per_thread = 4096;
 }  // namespace
 
 double norm_cdf(double x) {
-    // erfc and not 1 + erf. far in the left tail erf(x) is -1 + tiny, so 1 + erf
-    // cancels to 0 and loses every digit, while erfc(-x) keeps them. same reason python uses
+    // erfc instead of 1 + erf: far in the left tail erf(x) is -1 + tiny -> 1 + erf
+    // cancels to 0 and loses every digit, while erfc(-x) keeps them, same reason python uses
     // scipy ndtr and N(-d2) for the put
     return 0.5 * std::erfc(-x * std::numbers::sqrt2 / 2.0);
 }

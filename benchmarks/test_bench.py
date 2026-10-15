@@ -5,7 +5,7 @@
 - numpy: the library itself (ope.price, ope.mc_price, ope.crr_price), vectorized
 - c++ 1 thread and c++ on every core: ope.cpp
 
-the fair comparison for c++ is numpy, not the loops (STEPS.md, tier 4 traps)
+the fair comparison for c++ is numpy (STEPS.md, tier 4 traps), the loops are the floor
 """
 
 import math
@@ -22,8 +22,8 @@ from ope import cpp
 N_OPTIONS = 100_000
 N_PATHS = 1_000_000
 STEPS = 2_000
-HULL = (42.0, 40.0, 0.5, 0.10, 0.20)  # S, K, T, r, sigma
-AMERICAN_PUT = (50.0, 50.0, 5 / 12, 0.10, 0.40)  # Hull's american put
+hull = (42.0, 40.0, 0.5, 0.10, 0.20)  # S, K, T, r, sigma
+AMERICAN_PUT = (50.0, 50.0, 5 / 12, 0.10, 0.40)  # hull's american put
 
 _rng = np.random.default_rng(0)
 CHAIN = {
@@ -55,7 +55,7 @@ def _bs_call_loop(
 
 
 def _mc_call_loop(n: int) -> float:
-    S, K, T, r, sigma = HULL
+    S, K, T, r, sigma = hull
     gen = random.Random(0)
     drift = (r - 0.5 * sigma * sigma) * T
     vol = sigma * math.sqrt(T)
@@ -93,9 +93,9 @@ WORKLOADS: dict[str, dict[str, Callable[[], object]]] = {
     },
     "monte_carlo": {
         "pure_python": lambda: _mc_call_loop(N_PATHS),
-        "numpy": lambda: ope.mc_price("call", *HULL, n_paths=N_PATHS, rng=0),
-        "cpp_1_thread": lambda: cpp.mc_price("call", *HULL, n_paths=N_PATHS, rng=0, threads=1),
-        "cpp_all_threads": lambda: cpp.mc_price("call", *HULL, n_paths=N_PATHS, rng=0),
+        "numpy": lambda: ope.mc_price("call", *hull, n_paths=N_PATHS, rng=0),
+        "cpp_1_thread": lambda: cpp.mc_price("call", *hull, n_paths=N_PATHS, rng=0, threads=1),
+        "cpp_all_threads": lambda: cpp.mc_price("call", *hull, n_paths=N_PATHS, rng=0),
     },
     "american_tree": {
         "pure_python": lambda: _tree_put_loop(STEPS),
@@ -118,7 +118,7 @@ def test_the_four_versions_agree() -> None:
     ref = np.asarray(bs["numpy"]())
     for impl in ("pure_python", "cpp_1_thread", "cpp_all_threads"):
         np.testing.assert_allclose(np.asarray(bs[impl]()), ref, rtol=1e-10, atol=1e-12)
-    exact = float(ope.price("call", *HULL))
+    exact = float(ope.price("call", *hull))
     for impl, fn in WORKLOADS["monte_carlo"].items():
         res = fn()
         estimate = res if isinstance(res, float) else res.estimate  # type: ignore[attr-defined]

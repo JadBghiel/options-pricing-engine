@@ -9,7 +9,7 @@ UV="${UV:-uv}"  # UV=~/.local/bin/uv bash benchmarks/run.sh if uv isnt on the PA
 OUT=build/bench
 mkdir -p "$OUT"
 
-# release on purpose, a debug build is 5 to 10x slower and says nothing
+# release on purpose, a debug build is 5 to 10x slower and tells nothing
 cmake -S . -B build/bench-cpp -DCMAKE_BUILD_TYPE=Release -DOPE_BUILD_BENCHMARKS=ON
 cmake --build build/bench-cpp --target ope_bench -j
 build/bench-cpp/ope_bench \

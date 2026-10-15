@@ -19,8 +19,8 @@ jobs:
           enable-cache: true
 
       - name: Install
-        # all extras so mypy and the tests also cover the matplotlib plots. this also compiles
-        # the c++ core (scikit-build-core + cmake, release), so the tests below run on it too
+        # all extras -> mypy and the tests also cover the matplotlib plots, this also compiles
+        # the c++ core (scikit-build-core + cmake, release) and the tests below run on it too
         run: uv sync --locked --all-extras
 
       - name: Lint
@@ -36,7 +36,7 @@ jobs:
         run: uv run pytest
 
       - name: Notebooks
-        # runs every notebook top to bottom, so a notebook that breaks after an api change fails ci
+        # every notebook top to bottom: a notebook that breaks after an api change fails ci
         run: uv run pytest --nbmake notebooks --no-cov
 
       - name: Upload coverage
@@ -44,13 +44,13 @@ jobs:
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: coverage.xml
-          # stays false until the CODECOV_TOKEN secret exists, so CI can pass before it is set
+          # false until the CODECOV_TOKEN secret exists -> CI can pass before it is set
           fail_ci_if_error: false
 
   cpp:
-    # the c++ core on its own: googletest in release, then the same tests under sanitizers.
+    # the c++ core on its own: googletest in release, then the same tests under sanitizers,
     # a sanitizer adds checks around every memory access, every arithmetic op or every shared
-    # variable, and the first problem aborts the run, so a green job means none was hit
+    # variable, and the first problem aborts the run -> a green job means none was hit
     name: cpp (${{ matrix.name }})
     runs-on: ubuntu-latest
     strategy:
@@ -72,7 +72,7 @@ jobs:
 
       - name: Lower address randomization for tsan
         # recent kernels randomize addresses more than tsan's memory layout allows, and tsan
-        # aborts before any test w/ "unexpected memory mapping". 28 bits is the usual fix
+        # aborts before any test w/ "unexpected memory mapping", 28 bits is the usual fix
         if: matrix.name == 'tsan'
         run: sudo sysctl -w vm.mmap_rnd_bits=28
 

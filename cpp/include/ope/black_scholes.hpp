@@ -1,6 +1,6 @@
 // black scholes merton closed form, same formulas and conventions as src/ope/black_scholes.py
 //
-// units: r, q and sigma annualized and continuously compounded, T in years. greeks in Hull's
+// units: r, q and sigma annualized and continuously compounded, T in years, greeks in hull's
 // units: vega and rho per 1.00, theta per year
 #pragma once
 
@@ -19,11 +19,11 @@ struct Greeks {
     double rho;
 };
 
-// 1 option. throws std::invalid_argument on bad inputs, same msgs as python
+// 1 option, throws std::invalid_argument on bad inputs, same msgs as python
 double bs_price(Option option, double S, double K, double T, double r, double sigma, double q = 0.0);
 Greeks bs_greeks(Option option, double S, double K, double T, double r, double sigma, double q = 0.0);
 
-// a whole chain, every span the same length. inputs are all checked before any thread starts
+// a whole chain, every span the same length, inputs are all checked before any thread starts
 struct Chain {
     std::span<const double> S, K, T, r, sigma, q;
     std::size_t size() const;

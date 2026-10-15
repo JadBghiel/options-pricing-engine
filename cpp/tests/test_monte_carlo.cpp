@@ -1,5 +1,5 @@
 // monte carlo on the c++ side: the generator against published answers, the normals'
-// moments, and the estimator against black scholes. same seed must give the same bits for
+// moments, and the estimator against black scholes, same seed must give the same bits for
 // any thread count
 #include <gtest/gtest.h>
 

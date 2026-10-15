@@ -64,7 +64,7 @@ void BM_AmericanTree(benchmark::State& state) {
 }  // namespace
 
 // UseRealTime: the default clock is the cpu time of the main thread, which hardly moves while
-// worker threads do the job, so a threaded run would look free
+// worker threads do the job -> a threaded run would look free
 BENCHMARK(BM_BlackScholesChain)->ArgName("threads")->Arg(1)->Arg(2)->Arg(4)->Arg(8)->UseRealTime()->Unit(benchmark::kMillisecond);
 BENCHMARK(BM_MonteCarlo)->ArgName("threads")->Arg(1)->Arg(2)->Arg(4)->Arg(8)->UseRealTime()->Unit(benchmark::kMillisecond);
 BENCHMARK(BM_AmericanTree)->Unit(benchmark::kMillisecond);

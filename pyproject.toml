@@ -1,6 +1,6 @@
 [build-system]
-# scikit-build-core runs CMakeLists.txt and puts the compiled ope._core next to the python files.
-# pybind11 comes from pypi here, so no system install is needed, only a c++20 compiler
+# scikit-build-core runs CMakeLists.txt and puts the compiled ope._core next to the python files,
+# pybind11 comes from pypi here -> no system install is needed, a c++20 compiler is enough
 requires = ["scikit-build-core>=0.10", "pybind11>=2.13"]
 build-backend = "scikit_build_core.build"
 
@@ -30,7 +30,7 @@ dev = [
 plots = [
     "matplotlib>=3.8",
 ]
-# only to pull a chain (tier 6), the library reads a saved snapshot w/o them
+# to pull a chain (tier 6), the library reads a saved snapshot w/o them
 market = [
     "ib_async>=2.1",  # ibkr, read only
     "yfinance>=0.2.40",  # fallback when the gateway is down
@@ -44,7 +44,7 @@ minimum-version = "build-system.requires"
 # release even for editable installs: a debug build would make every benchmark meaningless
 cmake.build-type = "Release"
 wheel.packages = ["src/ope"]
-# a fixed build dir so a rebuild after a c++ change only recompiles what changed
+# a fixed build dir -> a rebuild after a c++ change recompiles what changed and nothing else
 build-dir = "build/{wheel_tag}"
 
 [tool.scikit-build.metadata.version]
@@ -53,7 +53,7 @@ provider = "scikit_build_core.metadata.regex"
 input = "src/ope/__init__.py"
 
 [tool.uv]
-# uv caches the built package, so it must know that a c++ change means a rebuild
+# uv caches the built package -> it must know that a c++ change means a rebuild
 cache-keys = [
     { file = "pyproject.toml" },
     { file = "CMakeLists.txt" },
@@ -81,7 +81,7 @@ select = [
     "RUF", # ruff-specific
 ]
 ignore = [
-    # S, K, T, N(x) are the standard notation in every pricing text, so we keep them
+    # S, K, T, N(x) are the standard notation in every pricing text, we keep them
     "N803", # argument name should be lowercase
     "N806", # variable in function should be lowercase
     "N815", # mixedCase in class scope (sqrt_T)

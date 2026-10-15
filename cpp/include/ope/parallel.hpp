@@ -1,4 +1,4 @@
-// thread count and a tiny parallel for, std::thread only so no openmp dependency
+// thread count and a tiny parallel for, std::thread -> no openmp dependency
 #pragma once
 
 #include <algorithm>
@@ -9,7 +9,7 @@
 
 namespace ope {
 
-// 0 -> every hardware thread, n -> n. never less than 1
+// 0 -> every hardware thread, n -> n, at least 1
 inline int resolve_threads(int threads) {
     if (threads < 0) {
         throw std::invalid_argument("threads must be >= 0 (0 = all cores)");
@@ -20,7 +20,7 @@ inline int resolve_threads(int threads) {
     return threads;
 }
 
-// splits [0, n) into contiguous ranges and calls f(begin, end) on each, 1 range per thread.
+// splits [0, n) into contiguous ranges and calls f(begin, end) on each, 1 range per thread,
 // below min_per_thread items per thread it uses fewer threads, starting a thread costs ~10us
 template <class F>
 void parallel_for(std::size_t n, int threads, std::size_t min_per_thread, F&& f) {

@@ -1,4 +1,4 @@
-// ope._core: the pybind11 bindings. thin on purpose, src/ope/cpp.py does the broadcasting and
+// ope._core: the pybind11 bindings, thin on purpose, src/ope/cpp.py does the broadcasting and
 // gives these the same signatures as the python functions
 #include <pybind11/numpy.h>
 #include <pybind11/pybind11.h>
@@ -64,9 +64,9 @@ PYBIND11_MODULE(_core, m) {
               const ope::Chain c = chain(S, K, T, r, sigma, q);
               Array out(static_cast<py::ssize_t>(c.size()));
               std::span<double> o = view(out);
-              // LEARNING NOTE: the GIL (python's global lock) is released for the loop. the
-              // spans point into numpy buffers we hold a reference to, so no python object is
-              // touched until the lock comes back, and other python threads run meanwhile.
+              // LEARNING NOTE: the GIL (python's global lock) is released for the loop, the
+              // spans point into numpy buffers we hold a reference to -> no python object is
+              // touched until the lock comes back, and other python threads run meanwhile,
               // an exception thrown in here reacquires it on the way out
               {
                   py::gil_scoped_release release;
@@ -123,7 +123,7 @@ PYBIND11_MODULE(_core, m) {
         return out;
     });
 
-    // raw generator, only for the test that checks it against numpy's Philox bit for bit
+    // raw generator, for the test that compares it w/ numpy's Philox bit for bit
     m.def("philox4x64", [](const ope::PhiloxBlock& counter, const ope::PhiloxKey& key) {
         return ope::philox4x64(counter, key);
     });

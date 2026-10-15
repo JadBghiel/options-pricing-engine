@@ -12,7 +12,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)  # for clangd in the editor
 
-# a debug build is 5 to 10x slower, so benchmarking 1 by accident is easy. release unless asked
+# a debug build is 5 to 10x slower -> benchmarking 1 by accident is easy, release unless asked
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
   set(CMAKE_BUILD_TYPE Release CACHE STRING "build type" FORCE)
 endif()
@@ -23,7 +23,7 @@ option(OPE_WERROR "warnings are errors (ci)" OFF)
 set(OPE_SANITIZE "" CACHE STRING "sanitizers, e.g. address,undefined or thread")
 
 if(OPE_SANITIZE)
-  # on everything, googletest included, so a bad access inside an EXPECT is caught too
+  # on everything, googletest included -> a bad access inside an EXPECT is caught too
   add_compile_options(-fsanitize=${OPE_SANITIZE} -fno-omit-frame-pointer -fno-sanitize-recover=all)
   add_link_options(-fsanitize=${OPE_SANITIZE})
 endif()
@@ -37,14 +37,14 @@ add_library(ope_core STATIC
 )
 target_include_directories(ope_core PUBLIC cpp/include)
 target_link_libraries(ope_core PUBLIC Threads::Threads)
-# the static lib ends up inside a shared python module, so it must be position independent
+# the static lib ends up inside a shared python module -> it must be position independent
 set_target_properties(ope_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_compile_options(ope_core PRIVATE -Wall -Wextra -Wpedantic -Wshadow -Wconversion)
 if(OPE_WERROR)
   target_compile_options(ope_core PRIVATE -Werror)
 endif()
 # no fused multiply add: a*b + c rounded once instead of twice would change results between
-# machines. off is the default on x86-64 w/o -march, this makes it explicit everywhere
+# machines, off is the default on x86-64 w/o -march, this makes it explicit everywhere
 target_compile_options(ope_core PUBLIC -ffp-contract=off)
 
 if(SKBUILD)

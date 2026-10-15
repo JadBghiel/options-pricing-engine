@@ -33,7 +33,7 @@ double crr_price(Option option, double S, double K, double T, double r, double s
     }
     const double disc = std::exp(-r * dt);
 
-    // node j at step i has the stock at S u^(2j - i), so 2n + 1 distinct prices for the whole
+    // node j at step i has the stock at S u^(2j - i) -> 2n + 1 distinct prices for the whole
     // tree: spot[k + n] = S u^k, computed once instead of once per node
     const auto n = static_cast<std::size_t>(steps);
     std::vector<double> spot(2 * n + 1);
@@ -45,9 +45,9 @@ double crr_price(Option option, double S, double K, double T, double r, double s
     for (std::size_t j = 0; j <= n; ++j) {
         v[j] = payoff(option, spot[2 * j], K);
     }
-    // LEARNING NOTE: backward induction in place on 1 array. node j at step i needs nodes j and
-    // j + 1 of step i + 1, and going j = 0, 1, 2... overwrites v[j] only after its last use, so
-    // the tree costs n + 1 doubles of memory, not n^2 / 2. python builds a new array per step
+    // LEARNING NOTE: backward induction in place on 1 array, node j at step i needs nodes j and
+    // j + 1 of step i + 1, and going j = 0, 1, 2... overwrites v[j] after its last use -> the
+    // tree costs n + 1 doubles of memory instead of n^2 / 2, python builds a new array per step
     for (std::size_t i = n; i-- > 0;) {
         for (std::size_t j = 0; j <= i; ++j) {
             const double cont = disc * (p * v[j + 1] + (1.0 - p) * v[j]);

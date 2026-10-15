@@ -1,7 +1,7 @@
 // philox 4x64-10, the counter based generator of Salmon et al. 2011 (Random123), also in numpy
 //
-// a counter based generator is a keyed hash: block = philox(counter, key). no state to carry
-// from 1 draw to the next, so any thread can jump to any position in the stream for free
+// a counter based generator is a keyed hash: block = philox(counter, key), no state to carry
+// from 1 draw to the next -> any thread can jump to any position in the stream for free
 #pragma once
 
 #include <array>

@@ -6,9 +6,9 @@
 #include <string>
 #include <string_view>
 
-// LEARNING NOTE: -ffast-math lets the compiler assume no inf and no nan. black scholes sets d1
-// and d2 to +-inf on purpose when sigma*sqrt(T) = 0, so under fast math the degenerate cases
-// silently break, and the rounding stops matching python. so we refuse to compile w/ it
+// LEARNING NOTE: -ffast-math lets the compiler assume no inf and no nan, black scholes sets d1
+// and d2 to +-inf on purpose when sigma*sqrt(T) = 0 -> under fast math the degenerate cases
+// silently break, and the rounding stops matching python, we refuse to compile w/ it
 #ifdef __FAST_MATH__
 #error "ope needs IEEE floating point, never build it w/ -ffast-math"
 #endif

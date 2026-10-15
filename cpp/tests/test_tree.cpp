@@ -1,4 +1,4 @@
-// crr tree on the c++ side: Hull's 5 step put, convergence to black scholes, the american call
+// crr tree on the c++ side: hull's 5 step put, convergence to black scholes, the american call
 // w/o dividends, and the errors
 #include <gtest/gtest.h>
 
@@ -9,8 +9,8 @@
 
 using ope::Option;
 
-TEST(Tree, HullFiveStepAmericanPut) {
-    // S=50, K=50, T=5 months, r=10%, sigma=40%, 5 steps. Hull rounds it to 4.49
+TEST(Tree, hullFiveStepAmericanPut) {
+    // S=50, K=50, T=5 months, r=10%, sigma=40%, 5 steps, hull rounds it to 4.49
     EXPECT_NEAR(ope::crr_price(Option::put, 50, 50, 5.0 / 12, 0.10, 0.40, 0, 5, true),
                 4.488458534726, 1e-11);
 }
@@ -39,6 +39,6 @@ TEST(Tree, BadInputsThrow) {
     EXPECT_THROW(ope::crr_price(Option::call, -1, 40, 1, 0.05, 0.2, 0, 10, false), std::invalid_argument);
     EXPECT_THROW(ope::crr_price(Option::call, 42, 40, 1, 0.05, 0.2, 0, 0, false), std::invalid_argument);
     EXPECT_THROW(ope::crr_price(Option::call, 42, 40, 1, 0.05, 0.0, 0, 10, false), std::invalid_argument);
-    // e^{0.5} is above u = e^{0.01}, so p > 1
+    // e^{0.5} is above u = e^{0.01} -> p > 1
     EXPECT_THROW(ope::crr_price(Option::call, 42, 40, 1, 0.5, 0.01, 0, 1, false), std::invalid_argument);
 }

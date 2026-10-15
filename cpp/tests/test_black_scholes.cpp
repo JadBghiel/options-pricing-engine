@@ -11,12 +11,12 @@
 
 using ope::Option;
 
-TEST(BlackScholes, HullCallAndPut) {
+TEST(BlackScholes, hullCallAndPut) {
     EXPECT_NEAR(ope::bs_price(Option::call, 42, 40, 0.5, 0.10, 0.20), 4.7594223929, 1e-9);
     EXPECT_NEAR(ope::bs_price(Option::put, 42, 40, 0.5, 0.10, 0.20), 0.8085993729, 1e-9);
 }
 
-TEST(BlackScholes, HullGreeks) {
+TEST(BlackScholes, hullGreeks) {
     const ope::Greeks g = ope::bs_greeks(Option::call, 49, 50, 20.0 / 52, 0.05, 0.20);
     EXPECT_NEAR(g.delta, 0.5216046611, 1e-9);
     EXPECT_NEAR(g.gamma, 0.0655440393, 1e-9);
@@ -56,7 +56,7 @@ TEST(BlackScholes, GreeksMatchCentralDifferences) {
 }
 
 TEST(BlackScholes, DegenerateInputsGiveIntrinsicValues) {
-    // at expiry: intrinsic. zero vol: discounted intrinsic on the forward. zero spot: 0 / K e^{-rT}
+    // at expiry: intrinsic, zero vol: discounted intrinsic on the forward, zero spot: 0 / K e^{-rT}
     EXPECT_DOUBLE_EQ(ope::bs_price(Option::call, 50, 40, 0, 0.05, 0.2), 10.0);
     EXPECT_DOUBLE_EQ(ope::bs_price(Option::put, 50, 40, 0, 0.05, 0.2), 0.0);
     EXPECT_NEAR(ope::bs_price(Option::call, 100, 100, 1, 0.05, 0, 0.02),
@@ -72,7 +72,7 @@ TEST(BlackScholes, DegenerateInputsGiveIntrinsicValues) {
 }
 
 TEST(BlackScholes, ChainMatchesScalarCallsForAnyThreadCount) {
-    const std::size_t n = 20'000;  // above the threshold, so several threads really run
+    const std::size_t n = 20'000;  // above the threshold -> several threads run
     std::vector<double> S(n), K(n), T(n, 0.5), r(n, 0.03), s(n, 0.25), q(n, 0.01), out(n);
     for (std::size_t i = 0; i < n; ++i) {
         S[i] = 100.0;

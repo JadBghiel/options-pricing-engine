@@ -77,7 +77,7 @@ Moments merge(const Moments& a, const Moments& b) {
             a.sxx + b.sxx + dx * dx * w, a.syy + b.syy + dy * dy * w, a.sxy + b.sxy + dx * dy * w};
 }
 
-// 1 chunk of base draws -> its moments. 2 passes (means, then centered sums), stable in floats
+// 1 chunk of base draws -> its moments, 2 passes (means, then centered sums), stable in floats
 Moments chunk_moments(const Setup& s, std::span<const double> z, bool antithetic,
                       std::vector<double>& x, std::vector<double>& y) {
     const std::size_t n = z.size();
@@ -140,7 +140,7 @@ MCResult run(const Setup& s, std::int64_t m, std::int64_t n_paths, bool antithet
         std::vector<double> z(mc_chunk);
         std::vector<double> x(mc_chunk);
         std::vector<double> y(mc_chunk);
-        // each thread grabs the next free chunk until none is left, so fast threads do more
+        // each thread grabs the next free chunk until none is left -> fast threads do more
         for (std::int64_t c = next++; c < n_chunks; c = next++) {
             const std::int64_t begin = c * mc_chunk;
             const auto count = static_cast<std::size_t>(std::min(mc_chunk, m - begin));
@@ -161,9 +161,9 @@ MCResult run(const Setup& s, std::int64_t m, std::int64_t n_paths, bool antithet
         }
     }  // joined here
 
-    // LEARNING NOTE: floating point addition is not associative, (a + b) + c can differ from
-    // a + (b + c) in the last bit. if each thread summed whatever paths it happened to grab,
-    // the price would change w/ the thread count and the timing. so the paths are cut into
+    // LEARNING NOTE: floating point addition isnt associative, (a + b) + c can differ from
+    // a + (b + c) in the last bit, if each thread summed whatever paths it happened to grab,
+    // the price would change w/ the thread count and the timing -> the paths are cut into
     // fixed chunks, each chunk is summed alone, and the chunks are merged in chunk order:
     // same seed, same bits, whether 1 thread or 8 did the work
     Moments total;
@@ -204,9 +204,9 @@ void check_samples(std::int64_t m) {
 
 void fill_normals(std::span<double> out, std::uint64_t seed, std::uint64_t first) {
     // LEARNING NOTE: normal number i comes from philox block i / 4, lane i % 4, under the key
-    // seed. no generator state is passed around: a thread that starts at path 1,000,000 just
-    // computes block 250,000. that is what makes the streams per thread independent and
-    // reproducible, and what lets python ask for the exact normals the c++ side used
+    // seed, no generator state is passed around: a thread that starts at path 1,000,000
+    // computes block 250,000, that is what makes the streams per thread independent and
+    // reproducible, and what lets python ask for the normals the c++ side used
     std::size_t k = 0;
     std::uint64_t i = first;
     while (k < out.size()) {
