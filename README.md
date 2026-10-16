@@ -47,7 +47,7 @@ After some planning and defining the scope of this project I've organized it int
 - [ ] **Tier 0: Engineering setup.** `src/` layout, ruff, mypy strict, pytest with coverage, CI
       on every push. *Pass: a fresh clone installs and passes CI.*
 - [ ] **Tier 1: Black-Scholes closed form.** European prices, put-call parity, analytical Greeks,
-      implied volatility (Newton with a bisection fallback). *Pass: Hull's classic example,
+      implied volatility (Newton with a bisection fallback). *Pass: Hull's example,
       Greeks match finite differences, implied vol round-trips.*
 - [ ] **Tier 2: Monte Carlo.** Exact GBM simulation, standard errors and 95% confidence
       intervals, antithetic and control variates, Monte Carlo Greeks three ways. *Pass: the
@@ -75,12 +75,12 @@ The engine doesn't places or modifies orders. The IBKR gateaway code is read onl
 
 ## Validation
 
-| Tier | Checked against |
+| Tier | Compared with |
 |---|---|
 | 0 | A fresh clone installs and passes CI (lint, types, tests) |
 | 1 | Hull's example (S=42, K=40, r=10%, σ=20%, T=0.5): call ≈ 4.76, put ≈ 0.81. Greeks vs. finite differences to 1e-4. Implied vol round-trip to 1e-6. Put-call parity |
 | 2 | The Tier 1 price inside the 95% confidence interval about 95% of the time (checked over 200 seeds per method). Reported standard errors match the real spread across seeds. Variance reduction cuts the standard error 2x to 12x at equal N. Monte Carlo deltas (three ways) vs. the analytical delta within their standard error |
-| 3 | Tree and PDE converge to Tier 1 on European payoffs (1e-4 and second order). American puts from tree and PDE agree to 0.05% of the price. American call on a non-dividend stock equals the European call exactly; with an 8% dividend yield early exercise is worth 2.54 |
+| 3 | Tree and PDE converge to Tier 1 on European payoffs (1e-4 and second order). American puts from tree and PDE agree to 0.05% of the price. American call on a non-dividend stock equals the European call; with an 8% dividend yield early exercise is worth 2.54 |
 | 4 | The Python implementation on identical inputs: 1e-11 relative on 100,000 random options (largest gap 1.1e-13), the same tree to 1e-13, the same Monte Carlo on the same normals to 1e-11. The C++ generator matches NumPy's Philox bit for bit, and a seed gives the same bits on 1 to 8 threads. Clean ASan, UBSan and TSan builds |
 | 5 | Every closed form against a simulation of the same contract, with the 95% interval holding it 92 to 96% of the time over 200 seeds: the geometric Asian, the continuous barrier and lookback (Brownian bridge), and the Heston semi-analytical price against full-truncation Monte Carlo. The semi-analytical price against an independent integral (Lewis) to 1e-7, and Heston converging linearly to Black-Scholes as vol-of-vol goes to zero (gap 3e-5 at 1e-4) |
 | 6 | A synthetic SPX-like chain priced by the library with known parameters and planted bad quotes: every bad quote caught by its own filter, the forward within 1 bp, SVI and Heston recovering their parameters (Heston from all 8 starting points). On a real SPXW snapshot: fit errors per maturity, and the same numbers bit for bit when rerun from the cached snapshot |
@@ -243,7 +243,7 @@ cpp.crr_price("put", 50, 50, 5 / 12, 0.10, 0.40, steps=2000, american=True)  # 4
 cpp.mc_price("call", 42, 40, 0.5, 0.10, 0.20, n_paths=10_000_000, rng=0, threads=8)
 
 # C++ can't reproduce NumPy's random stream, so both sides are checked on the same normals
-z = cpp.normals(1_000_000, rng=0)  # exactly the draws cpp.mc_price(rng=0) uses
+z = cpp.normals(1_000_000, rng=0)  # the draws cpp.mc_price(rng=0) uses
 ope.mc_price_from_normals("call", 42, 40, 0.5, 0.10, 0.20, z=z)  # 4.760963344692207
 cpp.mc_price_from_normals("call", 42, 40, 0.5, 0.10, 0.20, z=z)  # 4.7609633446922075
 ```
@@ -254,7 +254,7 @@ cmake -S . -B build/cpp -DOPE_BUILD_TESTS=ON && cmake --build build/cpp && ctest
 ```
 
 **Walkthrough:** [notebooks/tier4_cpp_core.ipynb](notebooks/tier4_cpp_core.ipynb): Python and C++
-side by side and why they differ in the last bits, the Philox generator checked against NumPy,
+side by side and why they differ in the last bits, the Philox generator compared bit for bit with NumPy,
 the same price for any thread count, the thread scaling, and where the time goes.
 
 The Monte Carlo runs on any number of threads and gives the same bits for a given seed: normal
@@ -375,10 +375,10 @@ uv run ope fetch-chain --source ibkr --port 4002          # or: export OPE_IB_PO
 uv run ope calibrate data/chains/spx_ibkr_<date>_<time>.csv
 ```
 
-The fetcher only does the API handshake (no positions, orders or account data are requested),
-uses streaming market data requests (never the billed snapshot requests), stays at 50 quotes at a
-time, and writes every batch to `data/chains/` before anything reads it, so a rerun never asks for
-the same quotes twice. Without a market data subscription IBKR returns delayed data, which works
+The fetcher does the API handshake and nothing more (no positions, orders or account data are
+requested), uses streaming market data requests (the billed snapshot requests are never sent),
+stays at 50 quotes at a time, and writes every batch to `data/chains/` before anything reads it:
+a rerun after a disconnect asks for the missing batches and nothing else. Without a market data subscription IBKR returns delayed data, which works
 the same. `--source yfinance` (or `auto`, the default, when no gateway answers) uses Yahoo instead.
 
 **On a real SPXW snapshot** (IBKR delayed data, close of 23 October 2026, 8 expiries from 7 to
@@ -401,7 +401,7 @@ takes 4 to 7 seconds and gives the same parameters bit for bit when rerun from t
 ## Benchmarks
 
 Median times from Python, Release build, on a 4-core laptop (Intel i5-1135G7, 8 hardware threads).
-"NumPy" is the library itself, vectorized; pure Python loops are only the floor. Reproduce
+"NumPy" is the library itself, vectorized; pure Python loops are the floor. Reproduce
 everything with one command: `bash benchmarks/run.sh` (full output in
 [benchmarks/RESULTS.md](benchmarks/RESULTS.md)).
 
@@ -411,10 +411,10 @@ everything with one command: `bash benchmarks/run.sh` (full output in
 | Monte Carlo, 1,000,000 paths | 582 ms | 35.6 ms | 37.5 ms | 11.4 ms | 3.1x |
 | American put, CRR tree, 2,000 steps | 698 ms | 39.0 ms | 1.3 ms | n/a | 30x |
 
-What the table says:
+In the table:
 - **The tree** is where C++ wins outright: the Python version pays the interpreter at each of the
   2,000 time steps, and C++ runs one tight loop on one array.
-- **On one thread, C++ only ties NumPy** for Black-Scholes and Monte Carlo, because NumPy's inner
+- **On one thread, C++ ties NumPy** for Black-Scholes and Monte Carlo, because NumPy's inner
   loops are compiled C too. For Monte Carlo, C++ prices about 2x faster from the same normals but draws
   its normals 2x slower (Philox and Box-Muller against NumPy's ziggurat), so it evens out.
 - **Threads** bring the rest. The Monte Carlo speedup at 8 threads ranges from 2.9x to 5.1x across

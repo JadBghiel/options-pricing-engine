@@ -36,7 +36,7 @@ The backward step is vectorized per time slice; an American option takes the max
 continuation value and the exercise value at every node.
 
 **Finite differences.** In x = ln S the PDE has constant coefficients. The grid spans six standard
-deviations around the spot and the strike, and is shifted so the strike sits exactly on a node.
+deviations around the spot and the strike, and is shifted so the strike sits on a node.
 Time steps are Crank-Nicolson, except the first two, each replaced by two fully implicit half
 steps (Rannacher) to damp the oscillations caused by the payoff's kink. European steps solve a
 tridiagonal system directly; American steps solve the linear complementarity problem
@@ -45,7 +45,7 @@ is read off the grid at every step.
 
 ## 2. Validation
 
-Every reference value is recomputed by an independent script, never copied from a book.
+Every reference value is recomputed by an independent script.
 
 | Check | Result |
 |---|---|
@@ -97,7 +97,7 @@ of it: at 1000/1001 steps the European call is 4.759453 against 4.759422.
 
 ![CRR odd/even convergence](docs/img/tier3_tree_convergence.png)
 
-**The PDE** converges at second order in practice: on the European put, the error is 3.2e-3 at
+**The PDE** converges at second order: on the European put, the error is 3.2e-3 at
 50 × 50 and 1.4e-5 at 800 × 800. The drops per doubling are irregular because the spot falls at a
 different place between grid nodes; on average they are close to 4×. Without the Rannacher start,
 gamma read off a 25-step grid at the strike is 5.1 instead of 0.039; with it, 0.0393.
@@ -134,9 +134,9 @@ seed therefore gives the same bits on any number of threads, and Python can repl
 | Monte Carlo, 1,000,000 paths | 582 ms | 35.6 ms | 37.5 ms | 11.4 ms | 3.1× |
 | American put, CRR tree, 2,000 steps | 698 ms | 39.0 ms | 1.3 ms | n/a | 30× |
 
-The comparison that matters is against NumPy, not the Python loops. The tree gains 30× because
-the Python version pays the interpreter at each of its 2,000 time steps. Black-Scholes and Monte
-Carlo on one thread only tie NumPy, whose inner loops are compiled C too. For Monte Carlo the tie
+The comparison that matters is with NumPy; the Python loops are the floor. The tree gains 30×
+because the Python version pays the interpreter at each of its 2,000 time steps. Black-Scholes and
+Monte Carlo on one thread tie NumPy, whose inner loops are compiled C too. For Monte Carlo the tie
 splits cleanly: from the same normals C++ prices about twice as fast, but its Box-Muller normals
 (a log, a square root, a sine and a cosine per pair) cost about twice as much as NumPy's ziggurat.
 
@@ -150,9 +150,9 @@ while the workers run.
 ## 5. Exotics and Heston (Tier 5, short)
 
 **Exotics.** Asian, barrier and lookback options are simulated date by date with the exact GBM log
-step, so the monitoring dates are a contract term, never a discretization error. The arithmetic
+step, so the monitoring dates are a contract term, with no discretization error. The arithmetic
 Asian uses the geometric Asian (closed form) as control variate: 36x smaller standard error at
-equal paths. Barrier and lookback have continuous closed forms, checked against Monte Carlo with
+equal paths. Barrier and lookback have continuous closed forms, compared with Monte Carlo with
 the Brownian bridge between dates (95% intervals hold them 92 to 96% of the time over 200 seeds).
 Checked daily, the up-and-out call (S = K = 100, H = 120) is worth 1.3228 against 1.1761 watched
 continuously: a 12.5% gap that shrinks like 1/√n and that the BGK shifted barrier predicts within
@@ -168,9 +168,9 @@ goes to zero, Heston converges linearly to Black-Scholes at the average volatili
 ## 6. Calibration to market data (Tier 6)
 
 **The data.** SPXW options (S&P 500, European, cash-settled at the 4pm close on every expiry),
-pulled read-only from Interactive Brokers through `ib_async`: the API handshake only, streaming
+pulled read-only from Interactive Brokers through `ib_async`: the API handshake and nothing else, streaming
 delayed data in batches of 50, every batch written to the git-ignored `data/` before it is read.
-Real quotes are never committed (the IBKR market data agreement): the tests, the notebook and CI
+Real quotes stay out of git (the IBKR market data agreement): the tests, the notebook and CI
 run on a synthetic SPX-like chain priced by the library (Heston v₀ = 0.02, κ = 2.5, θ = 0.035,
 ξ = 0.8, ρ = −0.75; S = 5000, r = 4.5%, q = 1.3%), with tick-rounded bid-ask quotes and 29 planted
 bad quotes of six kinds.
@@ -185,7 +185,7 @@ bad quotes of six kinds.
 4. *SVI* per expiry (raw form, 5 parameters, 12 starting points), fitted in vol space, with Lee's
    wing bound b(1 + |ρ|) ≤ 2 in every fit. Butterfly arbitrage (Gatheral and Jacquier's g(k) ≥ 0)
    and calendar arbitrage (total variance not decreasing in T) are checked on each expiry's quoted
-   range plus 10%; a penalized refit happens only when the plain fit breaks one.
+   range plus 10%; a penalized refit happens when the plain fit breaks one.
 5. *Heston* calibrated to every expiry at once: residuals = (model − mid) / vega ≈ vol error, times
    the weights; prices from one shared Gauss-Legendre grid per expiry (the characteristic function
    computed once on the nodes, nodes that follow the oscillation of e^(−iu·log(K/F))); 8 seeded
@@ -263,7 +263,7 @@ on its own, has no such constraint.
 - **PSOR is pure Python.** An American PDE price takes about 1.3 to 1.5 s on a 400 × 400 grid. Tier 4
   ported Black-Scholes, Monte Carlo and the tree (its stated scope); the PDE is the next port.
 - **C++ normals are slower than NumPy's.** Box-Muller costs about 2× NumPy's ziggurat, so a
-  single-threaded C++ Monte Carlo only ties NumPy. A ziggurat sampler is the next speed-up.
+  single-threaded C++ Monte Carlo ties NumPy. A ziggurat sampler is the next speed-up.
 - **Thread scaling numbers are machine-dependent** and noisy on a laptop; the benchmarks report
   medians and the README gives the range seen.
 - **The exercise boundary is grid-resolution limited:** it moves in steps of one grid node, so

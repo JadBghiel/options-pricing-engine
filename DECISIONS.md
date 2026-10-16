@@ -19,8 +19,8 @@ entry per tier, added when the tier closes. The long version for each entry is i
   before any pricing maths is read.
 - **`uv` makes a fresh clone reproducible.** The lockfile pins every version, so CI and my laptop
   run the same environment.
-- **`src/` layout stops accidental imports.** Tests run against the installed package, not the
-  folder next to them, so a packaging mistake fails in CI and not in someone else's clone.
+- **`src/` layout stops accidental imports.** Tests run on the installed package instead of the
+  folder next to them: a packaging mistake fails in CI before it reaches someone else's clone.
 - **`hatchling` is easy to swap.** Tier 4 replaces the `[build-system]` block with
   scikit-build-core and the rest of `pyproject.toml` stays.
 
@@ -160,8 +160,8 @@ Tier 1; American puts tree vs. PDE within 0.05%; American call = European call w
   the C++ run used and replay it.
 - **Fixed chunks, merged in order.** Floating-point addition isn't associative, so this is what
   makes a seed give the same bits on 1 thread or 8.
-- **Same normals for both sides.** C++ can't reproduce NumPy's stream, so the exact check feeds
-  both the same array; the statistical checks (coverage, standard errors) run on each side's own
+- **Same normals for both sides.** C++ can't reproduce NumPy's stream, so the draw-for-draw check
+  feeds both the same array; the statistical checks (coverage, standard errors) run on each side's own
   generator.
 
 **Considered and ruled out:**
@@ -198,7 +198,7 @@ tests (99% coverage) and 20 GoogleTest tests, clean under ASan, UBSan and TSan. 
 
 **Why:**
 - **Exact steps for GBM.** The gap between a daily and a continuous barrier is then a property of
-  the contract, never a discretization error. Heston has no exact step, so there the step count is
+  the contract, with no discretization error in it. Heston has no exact step, so there the step count is
   a numerical choice and its bias is measured as such.
 - **The geometric control variate.** Its payoffs have a correlation of 0.9996 with the arithmetic
   ones: 36x smaller standard error at equal paths, against 3.6x for the Tier 2 stock control.
@@ -212,14 +212,14 @@ tests (99% coverage) and 20 GoogleTest tests, clean under ASan, UBSan and TSan. 
   same function without the jump, and it can be integrated to infinity without overflow.
 - **P1 and P2.** The price keeps the Black-Scholes shape S·P1 − K·e^(−rT)·P2, which makes it
   explainable; Lewis's single integral is kept in the tests as the independent check.
-- **No C++.** Tier 6 calibrates with the semi-analytical price, not the Monte Carlo, so Heston paths
-  aren't a hot path yet; a 1,000,000-path, 64-step run takes 4 to 6 s in NumPy on this laptop.
+- **No C++.** Tier 6 calibrates with the semi-analytical price, so Heston paths aren't a hot path
+  yet; a 1,000,000-path, 64-step run takes 4 to 6 s in NumPy on this laptop.
 
 **Considered and ruled out:**
 - *Reflection (|v|) or partial truncation* for the variance: more bias than full truncation.
 - *The QE scheme (Andersen 2008)*: less bias per step, but far more code to explain; the bias is
   measured and controlled with steps instead.
-- *Heston's original characteristic function*: kept only to show the jump.
+- *Heston's original characteristic function*: kept to show the jump.
 - *Carr-Madan FFT* for the semi-analytical price: prices a whole strike grid at once, worth it for
   calibration speed in Tier 6, not needed to validate one price.
 - *Checking discretely monitored prices against the continuous formulas*: wrong reference, off by
@@ -238,7 +238,7 @@ branch coverage.
 **Chosen:**
 - SPXW (S&P 500 index options, European, cash-settled at the 4pm close on every expiry): put-call
   parity and the European Heston formula apply exactly
-- a read-only IBKR fetcher on `ib_async` that only does the API handshake, streams delayed data
+- a read-only IBKR fetcher on `ib_async` that does the API handshake and nothing more, streams delayed data
   in batches of 50 and writes every batch to `data/` before reading it; yfinance as fallback;
   both in an optional `market` extra
 - no real quotes in git: a synthetic SPX-like chain, priced by the library with known parameters
@@ -246,8 +246,8 @@ branch coverage.
 - the forward and discount factor per expiry from a regression of C − P on K, weighted by
   1 / spread, with bad pairs removed one at a time
 - SVI per expiry fitted in vol space (weights 1 / bid-ask spread in vol), Lee's wing bound in
-  every fit, butterfly (g ≥ 0) and calendar checks on the quoted range, a penalty only when the
-  plain fit breaks one
+  every fit, butterfly (g ≥ 0) and calendar checks on the quoted range, a penalty when the plain
+  fit breaks one
 - Heston calibrated to all expiries at once, on one shared quadrature grid per expiry, residuals
   = price error / vega, 8 seeded Sobol starting points, all reported
 
@@ -259,8 +259,8 @@ branch coverage.
   sync with the 16:15 option quotes: with it, the 1-week dividend yield came out at −10%. Parity
   needs no spot, no r and no q.
 - **The bare handshake.** `ib_async`'s `connect()` requests the account's positions on every
-  connection, even with its "fetch nothing" flag (read in its source). `client.connect` does only
-  the handshake, and market data works on it the same.
+  connection, even with its "fetch nothing" flag (read in its source). `client.connect` does the
+  handshake and nothing else, and market data works on it the same.
 - **Vol space and 1 / spread weights.** A price error means very different things at the money
   and in the wings; an error in vol points divided by the bid-ask width in vol says how far
   outside what the market itself knows the fit is.
@@ -280,8 +280,8 @@ branch coverage.
 - *Dropping every zero-volume quote*: removed 57% of the real two-sided quotes, many of them tight.
 - *Treating a missing open interest as zero*: it arrives after the quote and was missing on half
   the 9-month quotes.
-- *One robust pass on the parity line*: a bad pair tilts the first line, and 5 good pairs were
-  dropped for 1 bad one; one at a time drops only the bad ones.
+- *One robust pass on the parity line*: a bad pair tilts the first line, and 4 good pairs were
+  dropped along with 1 bad one; one at a time drops the bad ones and keeps the rest.
 - *Checking SVI arbitrage on a wide fixed range*: see above. The wide-range result is still
   reported as a flag.
 - *Carr-Madan FFT or COS* for Heston: both fine and fast, but new machinery (a damping parameter,

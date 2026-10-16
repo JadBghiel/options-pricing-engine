@@ -1,6 +1,6 @@
 # NOTES
 
-Condensed notes for each tier: the key formulas, the gotchas we hit, and the takeaways. The full
+Condensed notes for each tier: the main formulas, the gotchas we hit, and the takeaways. The full
 version of each tier (intuition, derivations, validation plots, interview Q&A) lives in the
 project's Notion pages; this file keeps the learning visible on GitHub.
 
@@ -38,7 +38,7 @@ N is the standard normal CDF and n its density.
   `ope.implied_vol`. The module became `implied_volatility.py`.
 - Finite differences have a noise floor of about eps/h. A tolerance below it fails on noise.
 - `1 - N(d2)` cancels to 0 for deep OTM puts; `N(-d2)` keeps the digits.
-- A 100× gap in vega or rho, or 365× in theta, is a unit convention, not a formula error.
+- A 100× gap in vega or rho, or 365× in theta, comes from a unit convention: the formula is fine.
 
 ### Takeaways
 
@@ -56,7 +56,7 @@ N is the standard normal CDF and n its density.
 
 $$S_T = S\,e^{(r - q - \sigma^2/2)T + \sigma\sqrt{T}\,Z}, \qquad Z \sim N(0, 1)$$
 
-The stock price at expiry, simulated exactly in one step. The −σ²/2 makes the average S_T equal
+The stock price at expiry, simulated in one exact step. The −σ²/2 makes the average S_T equal
 the forward S·e^((r−q)T).
 
 $$\hat{C} = \frac{1}{N}\sum_{i=1}^{N} e^{-rT}\,\text{payoff}(S_T^{(i)}), \qquad \text{SE} = \frac{s}{\sqrt{N}}, \qquad \text{CI}_{95\%} = \hat{C} \pm 1.96\,\text{SE}$$
@@ -72,7 +72,7 @@ N paths, s the sample standard deviation of the discounted payoffs.
 ### Gotchas
 
 - A 95% interval misses 1 run in 20 by design: judge the method on coverage over many seeds,
-  never on one run. Seed 1 happened to miss with two methods at once.
+  never on a single run. Seed 1 happened to miss with two methods at once.
 - Antithetic pairs are not independent. Computing the standard error from the N payoffs instead
   of the N/2 pair averages reports an error that is too small.
 - With σ = 0 every path is identical, but the computed standard error is 6e-16, not 0: averaging
@@ -83,7 +83,7 @@ N paths, s the sample standard deviation of the discounted payoffs.
 ### Takeaways
 
 - Monte Carlo prices any payoff you can simulate; its error shrinks like 1/√N, so 100 times more
-  paths buys only 10 times less error.
+  paths buys 10 times less error.
 - Variance reduction is free accuracy: on Hull's call, antithetic plus a control variate cut the
   error 12 times, worth about 150 times more paths.
 - Pathwise and bump-with-common-random-numbers deltas are precise; likelihood ratio is about 3.5
@@ -99,7 +99,7 @@ N paths, s the sample standard deviation of the discounted payoffs.
 
 $$u = e^{\sigma\sqrt{\Delta t}}, \quad d = \frac{1}{u}, \quad p = \frac{e^{(r-q)\Delta t} - d}{u - d}, \qquad V_{i,j} = \max\left(e^{-r\Delta t}\left[p\,V_{i+1,j+1} + (1-p)\,V_{i+1,j}\right],\ \text{payoff}(S_{i,j})\right)$$
 
-The max is only there for an American option: at each node, the better of waiting and exercising.
+The max applies to American options: at each node, the better of waiting and exercising.
 
 **PDE in log price** (x = ln S, τ = time to expiry), solved backwards from the payoff:
 
@@ -166,11 +166,11 @@ $$\text{speedup}(n) = \frac{1}{s + (1 - s)/n}$$
 ### Takeaways
 
 - C++ wins outright where Python pays its interpreter in a loop (the tree: 30x). Where NumPy
-  already runs compiled loops, one C++ thread only ties it; threads bring the rest.
+  already runs compiled loops, one C++ thread ties it; threads bring the rest.
 - Monte Carlo on 1 thread is a tie for a precise reason: C++ prices about 2x faster from the same
   normals, but its Box-Muller normals cost 2x more than NumPy's ziggurat ones.
 - Reproducible parallel random numbers come from a counter-based generator plus a fixed reduction
-  order, not from luck.
+  order.
 - One test suite for two implementations: same signatures, a fixture that swaps the module.
 
 
@@ -287,4 +287,4 @@ $$r_i = \frac{C^{\text{Heston}}_i - C^{\text{mid}}_i}{\text{vega}_i}\cdot\frac{1
   market's doesn't. That is the case for jumps.
 - Validate on synthetic data with known answers first: the chain with planted bad quotes exposed
   the parity regression dropping good pairs with the bad one, which the real snapshot (0
-  outliers) would never have shown.
+  outliers) could not show.
