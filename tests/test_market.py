@@ -6,8 +6,8 @@ from typing import Any
 
 import pytest
 
-import ope.ibkr as ibkr
 from fakes import SATURDAY, TUESDAY_OPEN, FakeIB, FakeYahoo
+from ope import ib_gateway
 from ope.chain import load_snapshot, year_fraction
 from ope.ibkr import fetch_ibkr
 from ope.market import fetch_yfinance, pull_chain
@@ -31,7 +31,7 @@ def test_pull_chain_reuses_a_closed_session_snapshot(
     def no_network(**kw: Any) -> None:
         raise AssertionError("a cached snapshot must not touch the gateway")
 
-    monkeypatch.setattr(ibkr, "connect_ibkr", no_network)
+    monkeypatch.setattr(ib_gateway, "connect_ibkr", no_network)
     assert len(pull_chain(out_dir=tmp_path, now=SATURDAY, say=lambda s: None)) == len(
         load_snapshot(path)
     )
@@ -41,7 +41,7 @@ def test_pull_chain_falls_back_to_yahoo(tmp_path: Path, monkeypatch: pytest.Monk
     def refused(**kw: Any) -> None:
         raise ConnectionRefusedError("nothing on 4001")
 
-    monkeypatch.setattr(ibkr, "connect_ibkr", refused)
+    monkeypatch.setattr(ib_gateway, "connect_ibkr", refused)
     yahoo = FakeYahoo()
     chain = pull_chain(out_dir=tmp_path, now=SATURDAY, say=lambda s: None, yf_module=yahoo)
     assert chain.meta["source"] == "yfinance"
@@ -49,6 +49,37 @@ def test_pull_chain_falls_back_to_yahoo(tmp_path: Path, monkeypatch: pytest.Monk
         pull_chain("ibkr", out_dir=tmp_path / "x", now=SATURDAY, say=lambda s: None)
     with pytest.raises(ValueError, match="source"):
         pull_chain("bloomberg")
+    # IB only arguments dont reach yahoo
+    chain = pull_chain(
+        out_dir=tmp_path / "y", now=SATURDAY, say=lambda s: None, yf_module=yahoo, spot_hint=6500.0,
+        max_wait=1.0,
+    )  # fmt: skip
+    assert chain.meta["source"] == "yfinance"
+
+
+def test_no_port_auto_uses_yahoo_and_ibkr_refuses(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("OPE_IB_PORT", raising=False)
+    said: list[str] = []
+    chain = pull_chain(out_dir=tmp_path, now=SATURDAY, say=said.append, yf_module=FakeYahoo())
+    assert chain.meta["source"] == "yfinance"
+    assert any("OPE_IB_PORT" in s for s in said)
+    with pytest.raises(ib_gateway.NoPortError):
+        pull_chain("ibkr", out_dir=tmp_path / "x", now=SATURDAY, say=lambda s: None)
+
+
+def test_the_cache_is_per_symbol(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    fetch_ibkr(FakeIB(), out_dir=tmp_path, now=SATURDAY, say=lambda s: None)  # type: ignore[arg-type]
+
+    def refused(**kw: Any) -> None:
+        raise ConnectionRefusedError("no gateway")
+
+    monkeypatch.setattr(ib_gateway, "connect_ibkr", refused)
+    chain = pull_chain(
+        symbol="NDX", out_dir=tmp_path, now=SATURDAY, say=lambda s: None, yf_module=FakeYahoo()
+    )
+    assert chain.meta["symbol"] == "NDX"  # not the cached SPX snapshot
 
 
 def test_pull_chain_from_the_gateway_disconnects(
@@ -61,7 +92,7 @@ def test_pull_chain_from_the_gateway_disconnects(
             done.append(True)
 
     ib = Closable()
-    monkeypatch.setattr(ibkr, "connect_ibkr", lambda **kw: ib)
+    monkeypatch.setattr(ib_gateway, "connect_ibkr", lambda **kw: ib)
     chain = pull_chain("ibkr", out_dir=tmp_path, now=TUESDAY_OPEN, say=lambda s: None)
     assert chain.meta["source"] == "ibkr" and done == [True]
 
@@ -81,7 +112,7 @@ def test_pull_chain_passes_host_port_and_client_id_to_the_gateway(
 
         return Closable()
 
-    monkeypatch.setattr(ibkr, "connect_ibkr", fake_connect)
+    monkeypatch.setattr(ib_gateway, "connect_ibkr", fake_connect)
     chain = pull_chain(
         "ibkr", host="10.0.0.2", port=7497, client_id=5, out_dir=tmp_path, now=TUESDAY_OPEN,
         say=lambda s: None,

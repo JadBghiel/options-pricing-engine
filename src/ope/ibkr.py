@@ -8,13 +8,12 @@ same approach as the sivers client (cached, paced, read only), adapted to a chai
 - no historical requests here -> IB's 60 per 10 min limit doesnt apply, the limits that do: 45
   messages a second (ib_async throttles itself) and the market data lines open at once (100 on
   most accounts) -> batches of 50 quotes, cancelled before the next batch
-- the socket handshake on connect and nothing else, see connect_ibkr, no order, account or
-  position call anywhere in this module, and the gateway's read only api setting blocks orders
+- the socket handshake on connect and nothing else, no order, account or position call anywhere
+  in this module, ope.ib_gateway locks the connection read only on top of the gateway's setting
 """
 
 import logging
 import math
-import os
 from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
@@ -39,51 +38,12 @@ from ope.chain import (
 if TYPE_CHECKING:
     from ib_async import IB, Contract, Ticker
 
-log = logging.getLogger(__name__)
-
-# defaults for ib gateway live, each one can be overridden by an env var (OPE_IB_HOST,
-# OPE_IB_PORT, OPE_IB_CLIENT_ID) or an argument: 4002 gateway paper, 7496/7497 tws live/paper
-IB_HOST, IB_PORT, IB_CLIENT_ID = "127.0.0.1", 4001, 23
 BATCH = 50
 MARKET_DATA_TYPES = {1: "live", 2: "frozen", 3: "delayed", 4: "delayed frozen"}
 # "market data farm connection is OK" and friends: info messages
 IB_NOISE = {2104, 2106, 2107, 2108, 2119, 2158}
 
 Log = Callable[[str], None]
-
-
-def ib_settings(
-    host: str | None = None, port: int | None = None, client_id: int | None = None
-) -> tuple[str, int, int]:
-    """argument, else env var, else default"""
-    return (
-        host or os.environ.get("OPE_IB_HOST", IB_HOST),
-        port or int(os.environ.get("OPE_IB_PORT", IB_PORT)),
-        client_id or int(os.environ.get("OPE_IB_CLIENT_ID", IB_CLIENT_ID)),
-    )
-
-
-def connect_ibkr(
-    host: str | None = None,
-    port: int | None = None,
-    client_id: int | None = None,
-    timeout: float = 15,
-) -> "IB":
-    """connection that does the api handshake and nothing else, no request about the account"""
-    from ib_async import IB
-
-    host, port, client_id = ib_settings(host, port, client_id)
-    # IB's per contract errors are collected by IBErrors and summed up in the snapshot meta
-    logging.getLogger("ib_async").setLevel(logging.CRITICAL)
-    ib = IB()
-    # LEARNING NOTE: not ib.connect(), in ib_async 2.1 it asks for the positions on every connect,
-    # even w/ fetchFields=StartupFetchNONE (the request isnt behind the flag), and open orders
-    # and account values by default, client.connect is the bare handshake, and qualifyContracts
-    # and reqMktData work on it the same, the gateway still pushes the account list on its own
-    # during the handshake, it stays in ib.wrapper.accounts and nothing here reads it
-    ib.wrapper.clientId = client_id
-    ib.client.connect(host, port, client_id, timeout)
-    return ib
 
 
 class IBErrors:
@@ -183,11 +143,40 @@ def fetch_ibkr(
     market data type 4 (delayed frozen): IB gives the best the account is entitled to, live or
     frozen w/ a subscription, delayed or delayed frozen w/o, the type received is recorded
     """
-    from ib_async import Option
-
     now = now or datetime.now(UTC)
     errors = IBErrors()
+    ib_log = logging.getLogger("ib_async")
+    level = ib_log.level
+    # IB's per contract errors are collected by IBErrors and summed up in the snapshot meta,
+    # ib_async's own log of them is muted for the pull and put back after
+    ib_log.setLevel(logging.CRITICAL)
     ib.errorEvent += errors
+    try:
+        return _pull(
+            ib, errors, symbol, trading_class, target_days, strikes_per_expiry, spot_hint,
+            out_dir, now, batch, max_wait, say,
+        )  # fmt: skip
+    finally:
+        ib.errorEvent -= errors
+        ib_log.setLevel(level)
+
+
+def _pull(
+    ib: "IB",
+    errors: IBErrors,
+    symbol: str,
+    trading_class: str,
+    target_days: Sequence[int],
+    strikes_per_expiry: int,
+    spot_hint: float | None,
+    out_dir: Path,
+    now: datetime,
+    batch: int,
+    max_wait: float,
+    say: Log,
+) -> Path:
+    from ib_async import Option
+
     ib.reqMarketDataType(4)
 
     index, level = spot_hint_ibkr(ib, symbol)
@@ -259,5 +248,5 @@ def fetch_ibkr(
         "contracts_unknown_to_ib": n_missing,
         "ib_errors": errors.summary(),
     }
-    ib.errorEvent -= errors
-    return save_snapshot(from_rows(rows_all, meta), stem)
+    # the batches sit under the 1st stem, the file is named after the final as_of
+    return save_snapshot(from_rows(rows_all, meta), snapshot_stem(symbol, "ibkr", as_of, out_dir))

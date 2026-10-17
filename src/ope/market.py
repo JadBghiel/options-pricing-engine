@@ -12,7 +12,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from ope import ibkr
+from ope import ib_gateway, ibkr
 from ope.chain import (
     DATA_CHAINS,
     TARGET_DAYS,
@@ -30,6 +30,10 @@ from ope.chain import (
     year_fraction,
 )
 from ope.ibkr import Log
+
+# arguments 1 source takes and the other doesnt, pull_chain sorts them
+IBKR_ONLY = frozenset({"spot_hint", "batch", "max_wait"})
+YAHOO_ONLY = frozenset({"yf_module"})
 
 
 def fetch_yfinance(
@@ -93,7 +97,7 @@ def fetch_yfinance(
                 )
     meta: dict[str, MetaValue] = {
         "source": "yfinance",
-        "symbol": "SPX" if symbol == "^SPX" else symbol,
+        "symbol": symbol.removeprefix("^"),
         "trading_class": trading_class,
         "as_of": as_of.isoformat(),
         "pulled_at": now.isoformat(),
@@ -107,6 +111,7 @@ def fetch_yfinance(
 def pull_chain(
     source: str = "auto",
     *,
+    symbol: str = "SPX",
     host: str | None = None,
     port: int | None = None,
     client_id: int | None = None,
@@ -116,30 +121,34 @@ def pull_chain(
     **kwargs: Any,
 ) -> Chain:
     """a snapshot from disk if this session's is already there, else from IB, else yahoo,
-    source: "ibkr", "yfinance" or "auto" (ibkr, yahoo if the gateway doesnt answer)"""
+    source: "ibkr", "yfinance" or "auto" (ibkr, yahoo w/o a port or if the gateway doesnt
+    answer), symbol is IB's index symbol, yahoo gets it w/ a ^ in front"""
     if source not in ("auto", "ibkr", "yfinance"):
         raise ValueError(f"source must be 'auto', 'ibkr' or 'yfinance', got {source!r}")
     now = now or datetime.now(UTC)
     close = last_session_close(now)
     if close is not None:  # market shut: the session's snapshot stays the same, reuse it
         for src in ("ibkr", "yfinance") if source == "auto" else (source,):
-            cached = snapshot_stem("SPX", src, close, out_dir).with_suffix(".csv")
+            cached = snapshot_stem(symbol, src, close, out_dir).with_suffix(".csv")
             if cached.exists():
                 say(f"cached snapshot {cached}")
                 return load_snapshot(cached)
     if source in ("auto", "ibkr"):
         try:
-            ib = ibkr.connect_ibkr(host=host, port=port, client_id=client_id)
-        except (ConnectionError, OSError, TimeoutError) as exc:
+            ib = ib_gateway.connect_ibkr(host=host, port=port, client_id=client_id)
+        except (ConnectionError, OSError, TimeoutError, ib_gateway.NoPortError) as exc:
             if source == "ibkr":
                 raise
-            port_used = ibkr.ib_settings(host, port, client_id)[1]
-            say(f"no IB gateway on port {port_used} ({exc}), falling back to yahoo")
+            say(f"no IB gateway ({exc}), falling back to yahoo")
         else:
+            ib_kw = {k: v for k, v in kwargs.items() if k not in YAHOO_ONLY}
             try:
                 return load_snapshot(
-                    ibkr.fetch_ibkr(ib, out_dir=out_dir, now=now, say=say, **kwargs)
+                    ibkr.fetch_ibkr(ib, symbol=symbol, out_dir=out_dir, now=now, say=say, **ib_kw)
                 )
             finally:
                 ib.disconnect()
-    return load_snapshot(fetch_yfinance(out_dir=out_dir, now=now, say=say, **kwargs))
+    yf_kw = {k: v for k, v in kwargs.items() if k not in IBKR_ONLY}
+    return load_snapshot(
+        fetch_yfinance(symbol=f"^{symbol}", out_dir=out_dir, now=now, say=say, **yf_kw)
+    )

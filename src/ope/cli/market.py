@@ -14,7 +14,11 @@ def register(sub: "argparse._SubParsersAction[argparse.ArgumentParser]") -> dict
     p = sub.add_parser("fetch-chain", help="save an SPXW chain snapshot (IBKR read-only, or Yahoo)")
     p.add_argument("--source", choices=["auto", "ibkr", "yfinance"], default="auto")
     p.add_argument("--host", default=None, help="default $OPE_IB_HOST or 127.0.0.1")
-    p.add_argument("--port", type=int, default=None, help="default $OPE_IB_PORT or 4001")
+    p.add_argument(
+        "--port", type=int, default=None,
+        help="IB API port, else $OPE_IB_PORT, no default (4001 gateway live, 4002 gateway paper,"
+        " 7496 TWS live, 7497 TWS paper), auto without a port uses Yahoo",
+    )  # fmt: skip
     p.add_argument("--client-id", type=int, default=None, help="default $OPE_IB_CLIENT_ID or 23")
     p.add_argument("--out-dir", default="data/chains")
 
