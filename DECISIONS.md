@@ -1,8 +1,7 @@
 # Decisions
 
 Why each significant choice was made, what else was considered, and what was ruled out. One
-entry per tier, added when the tier closes. The long version for each entry is in
-[EXPLANATION.md](EXPLANATION.md).
+entry per tier, added when the tier closes. The long version of each entry lives in my local notes.
 
 ---
 
@@ -51,7 +50,7 @@ entry per tier, added when the tier closes. The long version for each entry is i
   would leave it becomes a bisection step
 
 **Why:**
-- **Arrays from day one.** Tier 6 prices whole option chains and Tier 7 whole portfolios; one
+- **Arrays from day one.** Tier 6 prices whole option chains and Tier 7 whole strategies; one
   call on an array replaces a Python loop over strikes. Tier 4 benchmarks the gap.
 - **`q` now, not later.** Adding it after the Greeks exist would touch every formula and test.
 - **Hull's units** let the tests use Hull's numbers directly, so any gap is a real bug.
@@ -294,3 +293,16 @@ points of the true curve with noise, Heston back to its parameters from all 8 st
 2.5, ξ 0.797 for 0.8), the grid pricer within 1e-8 × F of `heston_price`. On the real snapshot:
 the fit error per expiry, and the same parameters bit for bit when rerun. 369 tests, 99% branch
 coverage.
+
+## Before going public: read-only by construction
+
+**Chosen:** the IBKR connection is locked in the library: order, position, account and billed
+snapshot calls raise `PermissionError`, the account list from the handshake is dropped, and a
+test fails if any file in the library calls one of them. No default port. MIT license.
+
+**Why:** IB's Read-Only API setting blocks orders but still answers position and account
+requests, and anyone can clone this repo and point it at their own account. Tier 7 will not read
+positions at all.
+
+**Considered and ruled out:** trusting the gateway setting alone; a subclass of `IB` (it would inherit any method
+a new `ib_async` version adds); 4001, the live gateway port, as a default.

@@ -5,7 +5,8 @@
 
 An options pricing library built tier by tier: closed-form Black-Scholes, Monte Carlo, trees and
 PDEs for American options, a multithreaded C++ core, exotics and stochastic volatility,
-calibration to real option chains, and finally risk on my own live portfolio.
+calibration to real option chains, and finally the risk of option strategies priced on that
+surface.
 
 I validated every tier of this project against a known reference (textbook value, analytical limit, or a
 slower method that is already trusted).
@@ -17,8 +18,8 @@ I documented my full learning process in Notion, reach out privately if you wish
 > Crank-Nicolson PDE, a multithreaded C++20 core that matches the Python to rounding, exotic
 > options (Asian, barrier, lookback) plus the Heston stochastic volatility model, and
 > calibration to SPX option chains (implied forwards, SVI, Heston).
-> 369 Python tests (99% branch coverage) and 20 C++ tests, clean under ASan, UBSan and TSan.
-> Write-up: [REPORT.md](REPORT.md). **Tier 7 (portfolio risk and the MCP server) is next.**
+> 378 Python tests (99% branch coverage) and 20 C++ tests, clean under ASan, UBSan and TSan.
+> Write-up: [REPORT.md](REPORT.md). **Tier 7 (a strategy risk lab and the MCP server) is next.**
 
 ---
 
@@ -36,7 +37,7 @@ benchmarks that say when the port was worth it.
 This engine is a **library**: numerical methods and performance, in Python and C++. With it, comes a CLI
 and plots. My other project, **QuantDesk** (a custom made harness for quantitative research), is the
 interface: in the 7th tier this repo gains a small MCP server so QuantDesk can call `price_option`,
-`greeks`, `implied_vol` and `portfolio_risk`. The two projects can be used independently though.
+`greeks`, `implied_vol` and `strategy_risk`. The two projects can be used independently though.
 
 ---
 
@@ -64,12 +65,14 @@ After some planning and defining the scope of this project I've organized it int
 - [ ] **Tier 6: Calibration to market data.** Real option chains (IBKR, read-only, with yfinance
       as fallback), an implied volatility surface, SVI per maturity, Heston calibration.
       *Pass: fit errors per maturity, reproducible from a cached snapshot.*
-- [ ] **Tier 7: Portfolio risk and an MCP server.** Read-only pricing of my live options
-      positions, portfolio Greeks, a full-revaluation scenario grid, historical VaR and
-      expected shortfall, and the MCP server for QuantDesk. *Pass: runs on my live account
-      without placing or modifying anything.*
+- [ ] **Tier 7: Strategy risk lab and an MCP server.** Option strategies described in a small
+      file (straddle, iron condor, spreads...) priced on the calibrated surface: their Greeks,
+      a full-revaluation scenario grid, historical VaR and expected shortfall, and the MCP
+      server for QuantDesk. It never reads positions or account data. *Pass: Greeks match
+      finite differences, delta-gamma vs. full revaluation shows where it breaks, and the MCP
+      tools are callable.*
 
-The engine doesn't places or modifies orders. The IBKR gateaway code is read only, you can safely connects yours.
+The engine doesn't place or modify orders. The IBKR gateway code is read only, you can safely connect yours.
 
 ---
 
@@ -84,7 +87,7 @@ The engine doesn't places or modifies orders. The IBKR gateaway code is read onl
 | 4 | The Python implementation on identical inputs: 1e-11 relative on 100,000 random options (largest gap 1.1e-13), the same tree to 1e-13, the same Monte Carlo on the same normals to 1e-11. The C++ generator matches NumPy's Philox bit for bit, and a seed gives the same bits on 1 to 8 threads. Clean ASan, UBSan and TSan builds |
 | 5 | Every closed form against a simulation of the same contract, with the 95% interval holding it 92 to 96% of the time over 200 seeds: the geometric Asian, the continuous barrier and lookback (Brownian bridge), and the Heston semi-analytical price against full-truncation Monte Carlo. The semi-analytical price against an independent integral (Lewis) to 1e-7, and Heston converging linearly to Black-Scholes as vol-of-vol goes to zero (gap 3e-5 at 1e-4) |
 | 6 | A synthetic SPX-like chain priced by the library with known parameters and planted bad quotes: every bad quote caught by its own filter, the forward within 1 bp, SVI and Heston recovering their parameters (Heston from all 8 starting points). On a real SPXW snapshot: fit errors per maturity, and the same numbers bit for bit when rerun from the cached snapshot |
-| 7 | Read-only behaviour on the live account. The MCP tools are listed and callable from the MCP inspector |
+| 7 | A strategy's Greeks against the sum of its legs and finite differences on the full revaluation. Delta-gamma against full revaluation, with its error where it breaks. VaR and expected shortfall rerun from cached history. The MCP tools are listed and callable from the MCP inspector |
 
 ---
 
@@ -368,7 +371,8 @@ own real chains with your own account, as below.
    **Allow connections from localhost only**, check that `127.0.0.1` is in the trusted IPs, and
    note the **Socket port** (IB's defaults: 4001 Gateway live, 4002 Gateway paper, 7496 TWS live,
    7497 TWS paper).
-3. Pull a snapshot, giving your port as a flag or an environment variable:
+3. Pull a snapshot, giving your port as a flag or an environment variable (there is no default
+   port, so nothing connects until you choose one):
 
 ```bash
 uv run ope fetch-chain --source ibkr --port 4002          # or: export OPE_IB_PORT=4002
@@ -376,10 +380,13 @@ uv run ope calibrate data/chains/spx_ibkr_<date>_<time>.csv
 ```
 
 The fetcher does the API handshake and nothing more (no positions, orders or account data are
-requested), uses streaming market data requests (the billed snapshot requests are never sent),
+requested), locks the connection read-only on its side as well (see the
+[Interactive Brokers disclaimer](#interactive-brokers-disclaimer)), uses streaming market data
+requests (the billed snapshot requests are never sent),
 stays at 50 quotes at a time, and writes every batch to `data/chains/` before anything reads it:
 a rerun after a disconnect asks for the missing batches and nothing else. Without a market data subscription IBKR returns delayed data, which works
-the same. `--source yfinance` (or `auto`, the default, when no gateway answers) uses Yahoo instead.
+the same. `--source yfinance` (or `auto`, the default, when no port is given or no gateway
+answers) uses Yahoo instead.
 
 **On a real SPXW snapshot** (IBKR delayed data, close of 23 October 2026, 8 expiries from 7 to
 342 days, 158 quotes kept of 392), run locally:
@@ -395,6 +402,32 @@ the steep one-week skew: with no jumps, its variance can't move fast enough. The
 takes 4 to 7 seconds and gives the same parameters bit for bit when rerun from the snapshot.
 
 ![Implied volatility smiles per expiry with the SVI and Heston fits, synthetic chain](docs/img/tier6_smiles.png)
+
+---
+
+## Interactive Brokers disclaimer
+
+If you clone this repository and connect it to your own Interactive Brokers account, read this
+first.
+
+- Tick **Read-Only API** in IB Gateway or TWS (Configure → Settings → API → Settings). The code
+  sends no orders, and `connect_ibkr` also locks the connection on its side
+  ([src/ope/ib_gateway.py](src/ope/ib_gateway.py)): every order, position and account method
+  raises an error. The gateway setting is the check IBKR enforces itself, so keep it on.
+- Start with a paper account (port 4002 for IB Gateway, 7497 for TWS) until you have read the
+  code. There is no default port: the fetcher connects only when you pass `--port` or set
+  `OPE_IB_PORT`.
+- What it requests: the index and option contract details, the list of expiries and strikes,
+  and streaming quotes for up to about 500 contracts, 50 at a time. No positions, orders,
+  executions or account values. The account list the gateway sends during the handshake is
+  dropped without being read.
+- What it costs: streaming delayed data is free. Snapshot and regulatory snapshot requests are
+  billed per request, so the library refuses them and a test checks it. Live quotes need a
+  market data subscription on your account; without one, IBKR sends delayed data.
+- Your quotes stay on your machine, in the git-ignored `data/` folder. The IBKR market data
+  agreement doesn't allow passing them on, so don't commit or publish them.
+- This is a learning project, provided as is under the [MIT license](LICENSE), with no warranty.
+  How you use it with your account is your responsibility.
 
 ---
 
@@ -442,13 +475,15 @@ NOTES.md            condensed notes per tier (key formulas, gotchas, takeaways)
 QUIZ_LOG.md         interview-style questions I missed, with the correct answers
 DECISIONS.md        what was picked and ruled out per tier, and why
 REPORT.md           technical write-up: methods, validation, convergence, limits
+LICENSE             MIT
 ```
 
 ---
 
 ## References
 
-Parts of this projects are also based on external sources, such as books I read or youtube videos I watched, non exhaustive list below
+Parts of this project are also based on external sources, such as books I read or youtube videos I watched, non exhaustive list below
+
 | Tier | Reading |
 |---|---|
 | 1 | Hull, *Options, Futures, and Other Derivatives*: the Black-Scholes-Merton model and the Greek letters. Joshi, *The Concepts and Practice of Mathematical Finance* |

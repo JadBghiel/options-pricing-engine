@@ -26,6 +26,6 @@ htmlcov/
 .env
 .env.*
 
-# market snapshots, positions and account data: never committed (Tiers 6 and 7)
+# market snapshots and index history: never committed (tiers 6 and 7)
 data/
 .cache/

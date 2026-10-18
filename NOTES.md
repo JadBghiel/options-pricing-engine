@@ -261,6 +261,8 @@ $$r_i = \frac{C^{\text{Heston}}_i - C^{\text{mid}}_i}{\text{vega}_i}\cdot\frac{1
   from parity.
 - `ib_async`'s `connect()` requests positions on every connection, whatever `fetchFields` says.
   For market data only, use the bare handshake (`ib.client.connect`).
+- IB's Read-Only API setting blocks orders, not reads: positions, account values and executions
+  still come back. The library locks its connection on its own side (`ope.ib_gateway`).
 - Snapshot and regulatory snapshot market data requests are billed per request; streaming
   delayed data is free.
 - "Zero volume" is a bad liquidity filter for index options: 57% of good real quotes. A missing

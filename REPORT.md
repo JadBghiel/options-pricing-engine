@@ -168,7 +168,8 @@ goes to zero, Heston converges linearly to Black-Scholes at the average volatili
 ## 6. Calibration to market data (Tier 6)
 
 **The data.** SPXW options (S&P 500, European, cash-settled at the 4pm close on every expiry),
-pulled read-only from Interactive Brokers through `ib_async`: the API handshake and nothing else, streaming
+pulled read-only from Interactive Brokers through `ib_async`: the API handshake and nothing else (a lock on
+the connection makes every order, position and account call raise), streaming
 delayed data in batches of 50, every batch written to the git-ignored `data/` before it is read.
 Real quotes stay out of git (the IBKR market data agreement): the tests, the notebook and CI
 run on a synthetic SPX-like chain priced by the library (Heston v₀ = 0.02, κ = 2.5, θ = 0.035,
@@ -274,7 +275,7 @@ on its own, has no such constraint.
 
 ```bash
 uv sync --all-extras                            # also compiles the C++ core (needs a C++20 compiler)
-uv run pytest                                   # 369 tests, Python and C++
+uv run pytest                                   # 378 tests, Python and C++
 uv run pytest --nbmake notebooks --no-cov       # the six walkthrough notebooks
 cmake -S . -B build/cpp -DOPE_BUILD_TESTS=ON && cmake --build build/cpp && ctest --test-dir build/cpp
 bash benchmarks/run.sh                          # every benchmark number, then benchmarks/RESULTS.md
