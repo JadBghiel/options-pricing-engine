@@ -129,7 +129,7 @@ def plot_tree_convergence(
     *,
     max_steps: int = 200,
 ) -> Figure:
-    """european crr price vs number of steps, against the closed form: the odd/even zigzag"""
+    """european crr price vs number of steps, next to the closed form: the odd/even zigzag"""
     steps = np.arange(10, max_steps + 1)
     tree = np.array([crr_price(option, S, K, T, r, sigma, q, steps=int(n)) for n in steps])
     exact = float(price(option, S, K, T, r, sigma, q))

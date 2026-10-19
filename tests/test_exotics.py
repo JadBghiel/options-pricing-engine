@@ -1,7 +1,7 @@
 """tier 5 validation: gbm paths and asian options
 
-the geometric asian's closed form against monte carlo over many fixed seeds (coverage of the 95%
-interval), the arithmetic one w/ its control variate against a naive simulation written here
+the geometric asian's closed form vs monte carlo over many fixed seeds (coverage of the 95%
+interval), the arithmetic one w/ its control variate vs a naive simulation written here
 """
 
 import math

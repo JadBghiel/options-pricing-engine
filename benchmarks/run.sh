@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# every benchmark number in the rdme and REPORT.md, in 1 cmd: bash benchmarks/run.sh
+# every benchmark number in the rdme and docs/REPORT.md, in 1 cmd: bash benchmarks/run.sh
 # c++ side w/ google benchmark, python side w/ pytest-benchmark, then benchmarks/RESULTS.md
 # close other heavy programs first, the thread scaling needs idle cores
 set -euo pipefail

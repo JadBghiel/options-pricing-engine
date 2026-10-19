@@ -5,7 +5,7 @@
 - numpy: the library itself (ope.price, ope.mc_price, ope.crr_price), vectorized
 - c++ 1 thread and c++ on every core: ope.cpp
 
-the fair comparison for c++ is numpy (STEPS.md, tier 4 traps), the loops are the floor
+the fair comparison for c++ is numpy (a tier 4 trap), the loops are the floor
 """
 
 import math

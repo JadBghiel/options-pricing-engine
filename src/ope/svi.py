@@ -33,7 +33,7 @@ K_WIDE = np.linspace(-1.5, 1.5, 601)
 MARGIN = 0.1
 # a calendar gap above -this (total variance) is solver tolerance
 CAL_TOL = 1e-6
-# how hard a penalty pushes back on arbitrage, against residuals of about 1 per bid ask spread
+# how hard a penalty pushes back on arbitrage, vs. residuals of about 1 per bid ask spread
 PENALTY = 1e3
 
 

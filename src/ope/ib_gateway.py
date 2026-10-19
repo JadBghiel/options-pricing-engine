@@ -2,8 +2,8 @@
 
 the gateway's Read-Only API setting blocks orders but still answers positions, account values
 and executions -> connect_ibkr locks the connection on our side too, every order or account
-method raises, and the snapshot flags of reqMktData (billed per request) are refused, a guard
-against mistakes in this repo: a raw socket message would still go through
+method raises, and the snapshot flags of reqMktData (billed per request) are refused, it catches
+mistakes in this repo: a raw socket message would still go through
 """
 
 import os

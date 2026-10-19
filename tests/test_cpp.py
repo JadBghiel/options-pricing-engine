@@ -1,4 +1,4 @@
-"""tier 4 validation: the c++ core against the python modules on the same inputs
+"""tier 4 validation: the c++ core vs the python modules on the same inputs
 
 the tier 1 to 3 tests already run on both sides (the impl fixture). this file compares the 2
 directly: same inputs -> same numbers within floating point tolerance, the

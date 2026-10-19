@@ -30,7 +30,7 @@ def plot_barrier_monitoring(
     n_paths: int = 200_000,
     seed: int = 0,
 ) -> Figure:
-    """knock out price vs how often the barrier is checked, against the continuous closed form
+    """knock out price vs how often the barrier is checked, next to the continuous closed form
 
     left: discretely monitored monte carlo (95% intervals), the bgk approximation and the
     continuous price, right: the gap to the continuous price on log scales, slope -1/2
@@ -86,7 +86,7 @@ def plot_heston_smile(
     points: int = 25,
     rhos: tuple[float, ...] = (-0.7, 0.0, 0.7),
 ) -> Figure:
-    """implied vol of heston prices vs strike, against the flat line black scholes assumes
+    """implied vol of heston prices vs strike, next to the flat line black scholes assumes
 
     left: the smile of params, right: the same params w/ each correlation in rhos, rho tilts it
     """
@@ -145,7 +145,7 @@ def plot_smiles(
     title: str = "",
 ) -> Figure:
     """1 panel per expiry: the market vols w/ their bid ask range, the svi fit and the heston
-    fit, against log moneyness k = log(K / F)"""
+    fit, vs log moneyness k = log(K / F)"""
     expiries = surface.expiries()
     cols = min(4, len(expiries))
     rows = math.ceil(len(expiries) / cols)

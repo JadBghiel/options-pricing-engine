@@ -1,4 +1,4 @@
-"""svi: the derivatives, g(k) against the density, the arbitrage checks and the recovery of
+"""svi: the derivatives, g(k) vs the density, the arbitrage checks and the recovery of
 known params"""
 
 import math
