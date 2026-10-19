@@ -87,22 +87,22 @@ call:
 
 Delta: bump with common random numbers and pathwise both reach a standard error of 0.0011;
 likelihood ratio 0.0037. Scrambled Sobol points (notebook only) reached an error of 0.00004 at
-65,536 points against 0.019 for pseudo-random numbers.
+65,536 points, vs. 0.019 for pseudo-random numbers.
 
-![Monte Carlo convergence](docs/img/tier2_mc_convergence.png)
+![Monte Carlo convergence](img/tier2_mc_convergence.png)
 
 **The binomial tree** converges like 1/n but zigzags between odd and even step counts, because
 the strike falls at a different position between nodes. Averaging n and n + 1 steps removes most
-of it: at 1000/1001 steps the European call is 4.759453 against 4.759422.
+of it: at 1000/1001 steps the European call is 4.759453 vs. 4.759422.
 
-![CRR odd/even convergence](docs/img/tier3_tree_convergence.png)
+![CRR odd/even convergence](img/tier3_tree_convergence.png)
 
 **The PDE** converges at second order: on the European put, the error is 3.2e-3 at
 50 × 50 and 1.4e-5 at 800 × 800. The drops per doubling are irregular because the spot falls at a
 different place between grid nodes; on average they are close to 4×. Without the Rannacher start,
 gamma read off a 25-step grid at the strike is 5.1 instead of 0.039; with it, 0.0393.
 
-![Early exercise boundary](docs/img/tier3_exercise_boundary.png)
+![Early exercise boundary](img/tier3_exercise_boundary.png)
 
 ## 4. The C++ core
 
@@ -145,7 +145,7 @@ this laptop: the 8 hardware threads share 4 physical cores, turbo slows as more 
 other programs compete. Timings use wall-clock time; the CPU time of the main thread barely moves
 while the workers run.
 
-![Monte Carlo time and speedup against the number of threads](docs/img/tier4_thread_scaling.png)
+![Monte Carlo time and speedup vs. the number of threads](img/tier4_thread_scaling.png)
 
 ## 5. Exotics and Heston (Tier 5, short)
 
@@ -154,13 +154,13 @@ step, so the monitoring dates are a contract term, with no discretization error.
 Asian uses the geometric Asian (closed form) as control variate: 36x smaller standard error at
 equal paths. Barrier and lookback have continuous closed forms, compared with Monte Carlo with
 the Brownian bridge between dates (95% intervals hold them 92 to 96% of the time over 200 seeds).
-Checked daily, the up-and-out call (S = K = 100, H = 120) is worth 1.3228 against 1.1761 watched
+Checked daily, the up-and-out call (S = K = 100, H = 120) is worth 1.3228 vs. 1.1761 watched
 continuously: a 12.5% gap that shrinks like 1/√n and that the BGK shifted barrier predicts within
 0.7%.
 
 **Heston.** The semi-analytical price uses the characteristic function in the "Little Heston
-Trap" form (Heston's original form gives 16.39 instead of 29.09 for a 5-year call), checked
-against Lewis's integral to 1e-7. Full-truncation Euler Monte Carlo agrees with it within its
+Trap" form (Heston's original form gives 16.39 instead of 29.09 for a 5-year call), equal
+to Lewis's integral to 1e-7. Full-truncation Euler Monte Carlo agrees with it within its
 standard error at 64 steps; its bias is +1.14 at 2 steps and about +0.03 at 64. As the vol of vol
 goes to zero, Heston converges linearly to Black-Scholes at the average volatility. With
 ρ = −0.7 the implied volatility runs from 27.8% at K = 70 to 13.3% at K = 130.
@@ -219,7 +219,7 @@ quotes (with it the 1-week dividend yield would be −10%), which is why the for
 
 SVI: no butterfly arbitrage on any quoted range (min g ≥ 0.12), no calendar crossing, no penalized
 fit. Heston: all 8 starts reached v₀ = 0.0287 (16.9% vol), κ = 4.80, θ = 0.0503 (22.4% vol),
-ξ = 1.78, ρ = −0.687; the Feller condition is violated (2κθ = 0.48 against ξ² = 3.15), as in most
+ξ = 1.78, ρ = −0.687; the Feller condition is violated (2κθ = 0.48 vs. ξ² = 3.15), as in most
 index calibrations. 4 to 7 s, and the same parameters bit for bit when rerun from the snapshot.
 
 **Reading it.** One set of Heston parameters fits the long end to a tenth of a vol point and
@@ -228,9 +228,9 @@ at 1 week, −9.5 at 1 month on the synthetic chain) while the market's keeps st
 week): a diffusion can't move the variance fast enough over a few days. SVI, which fits each expiry
 on its own, has no such constraint.
 
-![Implied volatility smiles per expiry with the SVI and Heston fits, synthetic chain](docs/img/tier6_smiles.png)
+![Implied volatility smiles per expiry with the SVI and Heston fits, synthetic chain](img/tier6_smiles.png)
 
-![At-the-money vol and skew against maturity, from the SVI fits, synthetic chain](docs/img/tier6_term_structure.png)
+![At-the-money vol and skew vs. maturity, from the SVI fits, synthetic chain](img/tier6_term_structure.png)
 
 ## 7. Limits
 

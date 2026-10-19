@@ -29,3 +29,12 @@ htmlcov/
 # market snapshots and index history: never committed (tiers 6 and 7)
 data/
 .cache/
+
+# local only: my plan, session guide, checklist, quiz log and long explanation (local/), the
+# learning material, and claude code's files
+local/
+learning/
+.pi/
+.claude/
+CLAUDE.md
+.diagram-design

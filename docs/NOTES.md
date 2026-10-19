@@ -47,7 +47,7 @@ N is the standard normal CDF and n its density.
 - N(d2) is the risk-neutral probability of ending in the money. N(d1) is the same probability
   under the stock measure, and the call's delta when q = 0.
 - Gamma and vega match for calls and puts because parity is linear in S and has no σ.
-- Newton is fast near the money (3 to 6 iterations against about 40 for bisection) but stalls
+- Newton is fast near the money (3 to 6 iterations vs. about 40 for bisection) but stalls
   where vega vanishes, so it needs a bracket and a bisection fallback.
 
 ## Tier 2: Monte Carlo
@@ -206,8 +206,8 @@ $$C = S e^{-qT} P_1 - K e^{-rT} P_2, \qquad P_2 = \frac{1}{2} + \frac{1}{\pi}\in
 ### Gotchas
 
 - A barrier checked daily is a different contract from one watched continuously: the up-and-out
-  call at H = 120 is worth 1.32 against 1.18 (12.5% and 31 standard errors apart). Check each
-  price against a reference for the same contract.
+  call at H = 120 is worth 1.32 vs. 1.18 (12.5% and 31 standard errors apart). Check each
+  price with a reference for the same contract.
 - Euler bias isn't noise: at 2 steps a year the Heston price is 83 standard errors off. More
   paths shrink the error bar, only more steps shrink the bias.
 - With the Feller condition violated the Euler variance goes negative on 8% to 37% of steps:
@@ -237,7 +237,7 @@ is a straight line in K, slope −D and intercept D·F.
 
 $$C - P = D\,(F - K) = DF - D\,K$$
 
-**Raw SVI**, total implied variance w = σ²T of one expiry against log moneyness k = log(K/F):
+**Raw SVI**, total implied variance w = σ²T of one expiry as a function of log moneyness k = log(K/F):
 
 $$w(k) = a + b\left(\rho\,(k - m) + \sqrt{(k - m)^2 + \sigma^2}\right)$$
 

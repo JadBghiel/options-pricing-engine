@@ -8,25 +8,29 @@ PDEs for American options, a multithreaded C++ core, exotics and stochastic vola
 calibration to real option chains, and finally the risk of option strategies priced on that
 surface.
 
-I validated every tier of this project against a known reference (textbook value, analytical limit, or a
+I validated every tier of this project with a known reference (textbook value, analytical limit, or a
 slower method that is already trusted).
 
 I documented my full learning process in Notion, reach out privately if you wish to consult it.
 
-> **Status:** Tiers 0 to 6 are built and validated locally: Black-Scholes with Greeks and
+> **Status:** Tiers 0 to 6 are built and validated: Black-Scholes with Greeks and
 > implied vol, Monte Carlo with variance reduction, American options by binomial tree and
 > Crank-Nicolson PDE, a multithreaded C++20 core that matches the Python to rounding, exotic
 > options (Asian, barrier, lookback) plus the Heston stochastic volatility model, and
 > calibration to SPX option chains (implied forwards, SVI, Heston).
 > 378 Python tests (99% branch coverage) and 20 C++ tests, clean under ASan, UBSan and TSan.
-> Write-up: [REPORT.md](REPORT.md). **Tier 7 (a strategy risk lab and the MCP server) is next.**
+> CI runs the tests, the notebooks and the C++ suite under the sanitizers on every push.
+> Write-up: [docs/REPORT.md](docs/REPORT.md). **Tier 7 (a strategy risk lab and the MCP server) is next.**
+
+**Quickest tour:** the [6 notebooks](notebooks/) (Tiers 1 to 6), the [REPORT](docs/REPORT.md) and the
+[validation table](#validation).
 
 ---
 
 ## Why I built it
 
-As a software engineering student, aiming for quantitative research and
-development roles. I've had great interest in option pricing and decided to dig deeper into it 
+I'm a software engineering student aiming for quantitative research and development roles, and
+I've been interested in option pricing for a while, so I decided to dig deeper into it.
 
 The split I made between Python and C++ is deliberate, Python is for fast iteration on the maths and
 the calibration. C++ is for the hot paths, exposed back to Python through pybind11, with
@@ -34,8 +38,8 @@ benchmarks that say when the port was worth it.
 
 ## How it fits with QuantDesk
 
-This engine is a **library**: numerical methods and performance, in Python and C++. With it, comes a CLI
-and plots. My other project, **QuantDesk** (a custom made harness for quantitative research), is the
+This engine is a **library**: numerical methods and performance, in Python and C++. It comes with a CLI
+and plots. My other project, **[QuantDesk](https://github.com/JadBghiel/quant-desk)** (a custom made harness for quantitative research), is the
 interface: in the 7th tier this repo gains a small MCP server so QuantDesk can call `price_option`,
 `greeks`, `implied_vol` and `strategy_risk`. The two projects can be used independently though.
 
@@ -43,26 +47,28 @@ interface: in the 7th tier this repo gains a small MCP server so QuantDesk can c
 
 ## Roadmap
 
-After some planning and defining the scope of this project I've organized it into 7 tiers, where each one builds on top of the previous: detailed checklist [STEPS.md](STEPS.md). Tiers 0 to 3 are the core engine, 4 to 7 are complementary but interesting nonetheless.
+After some planning and defining the scope of this project I've organized it into 7 tiers, where each one builds on top of the previous. Tiers 0 to 3 are the core engine, 4 to 7 are complementary but interesting nonetheless.
 
-- [ ] **Tier 0: Engineering setup.** `src/` layout, ruff, mypy strict, pytest with coverage, CI
+This project took me several months, and in each tier I went back and forth on some decisions, but the final ones are documented in their own notebook in [notebooks/](notebooks/), an overview of the tier (key formulas, plots and small experiments) that is quicker to read than the code.
+
+- [x] **Tier 0: Engineering setup.** `src/` layout, ruff, mypy strict, pytest with coverage, CI
       on every push. *Pass: a fresh clone installs and passes CI.*
-- [ ] **Tier 1: Black-Scholes closed form.** European prices, put-call parity, analytical Greeks,
+- [x] **Tier 1: Black-Scholes closed form.** European prices, put-call parity, analytical Greeks,
       implied volatility (Newton with a bisection fallback). *Pass: Hull's example,
       Greeks match finite differences, implied vol round-trips.*
-- [ ] **Tier 2: Monte Carlo.** Exact GBM simulation, standard errors and 95% confidence
+- [x] **Tier 2: Monte Carlo.** Exact GBM simulation, standard errors and 95% confidence
       intervals, antithetic and control variates, Monte Carlo Greeks three ways. *Pass: the
       Tier 1 price falls inside the confidence interval.*
-- [ ] **Tier 3: American options.** Cox-Ross-Rubinstein tree, Crank-Nicolson PDE solver with
+- [x] **Tier 3: American options.** Cox-Ross-Rubinstein tree, Crank-Nicolson PDE solver with
       PSOR, early-exercise boundary. *Pass: tree and PDE agree, and both converge to Tier 1 on
       European payoffs.*
-- [ ] **Tier 4: C++ core.** Black-Scholes, Monte Carlo and the tree in C++20 with pybind11,
+- [x] **Tier 4: C++ core.** Black-Scholes, Monte Carlo and the tree in C++20 with pybind11,
       multithreaded Monte Carlo, sanitizers in CI, benchmarks. *Pass: identical results to
       Python within floating-point tolerance.*
-- [ ] **Tier 5: Exotics and stochastic volatility.** Asian, barrier and lookback options, and the
+- [x] **Tier 5: Exotics and stochastic volatility.** Asian, barrier and lookback options, and the
       Heston model. *Pass: the geometric Asian matches its closed form; Heston converges to
       Black-Scholes as vol-of-vol goes to zero.*
-- [ ] **Tier 6: Calibration to market data.** Real option chains (IBKR, read-only, with yfinance
+- [x] **Tier 6: Calibration to market data.** Real option chains (IBKR, read-only, with yfinance
       as fallback), an implied volatility surface, SVI per maturity, Heston calibration.
       *Pass: fit errors per maturity, reproducible from a cached snapshot.*
 - [ ] **Tier 7: Strategy risk lab and an MCP server.** Option strategies described in a small
@@ -72,7 +78,8 @@ After some planning and defining the scope of this project I've organized it int
       finite differences, delta-gamma vs. full revaluation shows where it breaks, and the MCP
       tools are callable.*
 
-The engine doesn't place or modify orders. The IBKR gateway code is read only, you can safely connect yours.
+The engine doesn't place or modify orders. The IBKR gateway code is read only, you can safely connect yours (see the
+[Interactive Brokers disclaimer](#interactive-brokers-disclaimer)).
 
 ---
 
@@ -85,9 +92,9 @@ The engine doesn't place or modify orders. The IBKR gateway code is read only, y
 | 2 | The Tier 1 price inside the 95% confidence interval about 95% of the time (checked over 200 seeds per method). Reported standard errors match the real spread across seeds. Variance reduction cuts the standard error 2x to 12x at equal N. Monte Carlo deltas (three ways) vs. the analytical delta within their standard error |
 | 3 | Tree and PDE converge to Tier 1 on European payoffs (1e-4 and second order). American puts from tree and PDE agree to 0.05% of the price. American call on a non-dividend stock equals the European call; with an 8% dividend yield early exercise is worth 2.54 |
 | 4 | The Python implementation on identical inputs: 1e-11 relative on 100,000 random options (largest gap 1.1e-13), the same tree to 1e-13, the same Monte Carlo on the same normals to 1e-11. The C++ generator matches NumPy's Philox bit for bit, and a seed gives the same bits on 1 to 8 threads. Clean ASan, UBSan and TSan builds |
-| 5 | Every closed form against a simulation of the same contract, with the 95% interval holding it 92 to 96% of the time over 200 seeds: the geometric Asian, the continuous barrier and lookback (Brownian bridge), and the Heston semi-analytical price against full-truncation Monte Carlo. The semi-analytical price against an independent integral (Lewis) to 1e-7, and Heston converging linearly to Black-Scholes as vol-of-vol goes to zero (gap 3e-5 at 1e-4) |
+| 5 | Every closed form compared with a simulation of the same contract, with the 95% interval holding it 92 to 96% of the time over 200 seeds: the geometric Asian, the continuous barrier and lookback (Brownian bridge), and the Heston semi-analytical price vs. full-truncation Monte Carlo. The semi-analytical price matches an independent integral (Lewis) to 1e-7, and Heston converging linearly to Black-Scholes as vol-of-vol goes to zero (gap 3e-5 at 1e-4) |
 | 6 | A synthetic SPX-like chain priced by the library with known parameters and planted bad quotes: every bad quote caught by its own filter, the forward within 1 bp, SVI and Heston recovering their parameters (Heston from all 8 starting points). On a real SPXW snapshot: fit errors per maturity, and the same numbers bit for bit when rerun from the cached snapshot |
-| 7 | A strategy's Greeks against the sum of its legs and finite differences on the full revaluation. Delta-gamma against full revaluation, with its error where it breaks. VaR and expected shortfall rerun from cached history. The MCP tools are listed and callable from the MCP inspector |
+| 7 | A strategy's Greeks compared with the sum of its legs and with finite differences on the full revaluation. Delta-gamma vs. full revaluation, with its error where it breaks. VaR and expected shortfall rerun from cached history. The MCP tools are listed and callable from the MCP inspector |
 
 ---
 
@@ -118,6 +125,9 @@ uv sync --all-extras
 uv run pytest
 ```
 
+The first `uv sync` compiles the C++ core (a minute or two), and the full `uv run pytest` takes
+about 3 to 4 minutes: nothing is stuck.
+
 Plain pip works too: `python -m venv .venv && source .venv/bin/activate && pip install -e ".[dev,plots]"`.
 
 Checks that CI runs on every push:
@@ -127,9 +137,15 @@ uv run ruff check .
 uv run ruff format --check .
 uv run mypy
 uv run pytest
+uv run pytest --nbmake notebooks --no-cov  # every notebook, top to bottom
+cmake -S . -B build/cpp -DOPE_BUILD_TESTS=ON && cmake --build build/cpp && ctest --test-dir build/cpp
 ```
 
+The C++ tests also run in CI under ASan + UBSan and under TSan.
+
 ## Usage
+
+`uv run ope --help` lists all 19 commands; each tier below shows its main ones.
 
 ### Tier 1: Black-Scholes
 
@@ -155,7 +171,7 @@ CI runs them all.
 Conventions: `r`, `q` and `sigma` annualized and continuously compounded, `T` in years. Vega and
 rho per 1.00 (divide by 100 for one point), theta per year (divide by 365 for one day), as in Hull.
 
-![Black-Scholes price and Greeks against spot](docs/img/tier1_greeks_vs_spot.png)
+![Black-Scholes price and Greeks vs. spot](docs/img/tier1_greeks_vs_spot.png)
 
 Implied vol uses a safeguarded Newton (Newton steps inside a bracket, bisection when a step would
 leave it). Near the money it needs 3 to 6 iterations where bisection needs about 40.
@@ -315,7 +331,7 @@ reference for a contract checked daily:
 The gap shrinks like 1/√n. The down-and-out call at H=90 is less sensitive (+3.2% daily),
 because it dies where its payoff is small.
 
-![Barrier price against the number of monitoring dates](docs/img/tier5_barrier_monitoring.png)
+![Barrier price vs. the number of monitoring dates](docs/img/tier5_barrier_monitoring.png)
 
 **Heston.** The Monte Carlo has a bias from its time step that more paths don't remove: +1.14
 at 2 steps a year, about +0.03 at 64, on a call worth 9.8713. With the vol of vol violating the
@@ -324,7 +340,7 @@ max(v, 0) wherever v is needed. The semi-analytical price uses the "Little Hesto
 Heston's original formula prices a 5-year call at 16.39 instead of 29.09, because its complex
 logarithm jumps across a branch cut.
 
-![Implied volatility of Heston prices against the flat Black-Scholes volatility](docs/img/tier5_heston_smile.png)
+![Implied volatility of Heston prices next to the flat Black-Scholes volatility](docs/img/tier5_heston_smile.png)
 
 ### Tier 6: Calibration to market data
 
@@ -382,10 +398,10 @@ uv run ope calibrate data/chains/spx_ibkr_<date>_<time>.csv
 The fetcher does the API handshake and nothing more (no positions, orders or account data are
 requested), locks the connection read-only on its side as well (see the
 [Interactive Brokers disclaimer](#interactive-brokers-disclaimer)), uses streaming market data
-requests (the billed snapshot requests are never sent),
-stays at 50 quotes at a time, and writes every batch to `data/chains/` before anything reads it:
-a rerun after a disconnect asks for the missing batches and nothing else. Without a market data subscription IBKR returns delayed data, which works
-the same. `--source yfinance` (or `auto`, the default, when no port is given or no gateway
+requests (the billed snapshot requests are never sent), stays at 50 quotes at a time, and writes
+every batch to `data/chains/` before anything reads it: with the market closed, a rerun after a
+disconnect asks for the missing batches and nothing else. Without a market data subscription
+IBKR returns delayed data, which works the same. `--source yfinance` (or `auto`, the default, when no port is given or no gateway
 answers) uses Yahoo instead.
 
 **On a real SPXW snapshot** (IBKR delayed data, close of 23 October 2026, 8 expiries from 7 to
@@ -449,32 +465,30 @@ In the table:
   2,000 time steps, and C++ runs one tight loop on one array.
 - **On one thread, C++ ties NumPy** for Black-Scholes and Monte Carlo, because NumPy's inner
   loops are compiled C too. For Monte Carlo, C++ prices about 2x faster from the same normals but draws
-  its normals 2x slower (Philox and Box-Muller against NumPy's ziggurat), so it evens out.
+  its normals 2x slower (Philox and Box-Muller vs. NumPy's ziggurat), so it evens out.
 - **Threads** bring the rest. The Monte Carlo speedup at 8 threads ranges from 2.9x to 5.1x across
   runs on this laptop: 4 physical cores, turbo that slows down as more cores work, and whatever
   else the machine is doing.
 
-![Monte Carlo time and speedup against the number of threads](docs/img/tier4_thread_scaling.png)
+![Monte Carlo time and speedup vs. the number of threads](docs/img/tier4_thread_scaling.png)
 
 ---
 
 ## Repository layout
 
 ```
-src/ope/            Python library (models, Greeks, Monte Carlo, trees, PDE, calibration, risk)
+src/ope/            Python library (models, Greeks, Monte Carlo, trees, PDE, calibration; strategy risk in Tier 7)
 tests/fixtures/     the synthetic SPX-like chain snapshot the tests and the notebook run on
 cpp/                C++20 core: headers, sources, pybind11 bindings, GoogleTest, Google Benchmark
 CMakeLists.txt      builds the Python module (through scikit-build-core) or the C++ tests and benchmarks
 tests/              validation tests for every tier, run on the Python and the C++ side
 benchmarks/         pytest-benchmark suite, run.sh (one command for every number) and RESULTS.md
-notebooks/          one walkthrough per tier: plots, experiments, exercises (run in CI)
-docs/img/           plots used in this README
+notebooks/          one walkthrough per tier: plots and experiments (run in CI)
+docs/               the write-ups below, and docs/img/ for the plots in this README
 .github/workflows/  CI
-STEPS.md            working checklist per tier
-NOTES.md            condensed notes per tier (key formulas, gotchas, takeaways)
-QUIZ_LOG.md         interview-style questions I missed, with the correct answers
-DECISIONS.md        what was picked and ruled out per tier, and why
-REPORT.md           technical write-up: methods, validation, convergence, limits
+docs/NOTES.md       condensed notes per tier (key formulas, gotchas, takeaways)
+docs/DECISIONS.md   what was picked and ruled out per tier, and why
+docs/REPORT.md      technical write-up: methods, validation, convergence, limits
 LICENSE             MIT
 ```
 
@@ -482,7 +496,7 @@ LICENSE             MIT
 
 ## References
 
-Parts of this project are also based on external sources, such as books I read or youtube videos I watched, non exhaustive list below
+Parts of this project are also based on external sources, such as books I read or Youtube videos I watched, non exhaustive list below
 
 | Tier | Reading |
 |---|---|

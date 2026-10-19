@@ -72,7 +72,7 @@ Ruled out: library code in notebooks (not importable or type-checked) and jupyte
 plots on GitHub).
 
 **Validated:** Hull's price and Greeks examples, put-call parity on 500 random sets, all Greeks
-against finite differences, implied vol round trips, bounds, monotonicity and edge cases. 45
+vs. finite differences, implied vol round trips, bounds, monotonicity and edge cases. 45
 tests, 99% branch coverage.
 
 ## T2. Monte Carlo pricer
@@ -176,7 +176,7 @@ Tier 1; American puts tree vs. PDE within 0.05%; American call = European call w
 
 **Validated:** prices and Greeks within 1e-11 relative of Python on 100,000 random options (largest
 gap 1.1e-13), the tree to 1e-13, Monte Carlo on the same normals to 1e-11; Philox bit for bit
-against NumPy and against the Random123 known answers; same bits on 1 to 8 threads. 196 Python
+equal to NumPy and to the Random123 known answers; same bits on 1 to 8 threads. 196 Python
 tests (99% coverage) and 20 GoogleTest tests, clean under ASan, UBSan and TSan. Benchmarks: tree
 30x faster than NumPy, Black-Scholes and Monte Carlo about 3x with 8 threads (README).
 
@@ -200,10 +200,10 @@ tests (99% coverage) and 20 GoogleTest tests, clean under ASan, UBSan and TSan. 
   the contract, with no discretization error in it. Heston has no exact step, so there the step count is
   a numerical choice and its bias is measured as such.
 - **The geometric control variate.** Its payoffs have a correlation of 0.9996 with the arithmetic
-  ones: 36x smaller standard error at equal paths, against 3.6x for the Tier 2 stock control.
+  ones: 36x smaller standard error at equal paths, vs. 3.6x for the Tier 2 stock control.
 - **Bridge instead of fine steps.** Multiplying by the exact survival probability gives the
   continuously watched price from any number of dates, with no extra noise, so the continuous
-  closed forms can be tested against a simulation of the same contract.
+  closed forms can be compared with a simulation of the same contract.
 - **Full truncation.** Among the simple fixes for a negative Euler variance it has the smallest
   bias (Lord, Koekkoek and van Dijk), and it keeps the discounted stock an exact martingale.
 - **The trap form.** Heston's original formula gives a wrong price at long maturities (16.39
@@ -221,13 +221,13 @@ tests (99% coverage) and 20 GoogleTest tests, clean under ASan, UBSan and TSan. 
 - *Heston's original characteristic function*: kept to show the jump.
 - *Carr-Madan FFT* for the semi-analytical price: prices a whole strike grid at once, worth it for
   calibration speed in Tier 6, not needed to validate one price.
-- *Checking discretely monitored prices against the continuous formulas*: wrong reference, off by
+- *Comparing discretely monitored prices with the continuous formulas*: wrong reference, off by
   12.5% (31 standard errors) for the daily up-and-out call.
 - *Fixed-strike lookbacks and knock-in barriers*: knock-ins follow from in-out parity (vanilla =
   in + out), fixed strikes add nothing new to the lesson.
 
-**Validated:** every closed form against a simulation of the same contract, with 95% intervals
-holding it 92 to 96% of the time over 200 seeds; Heston's price against Lewis's integral to 1e-7
+**Validated:** every closed form compared with a simulation of the same contract, with 95% intervals
+holding it 92 to 96% of the time over 200 seeds; Heston's price equal to Lewis's integral to 1e-7
 from 1 month to 10 years; Heston → Black-Scholes linearly as ξ → 0 (3e-5 at ξ = 1e-4); the Monte
 Carlo's 4-step bias over 10 standard errors and its 64-step coverage at 93%. 269 tests, 99%
 branch coverage.
