@@ -8,10 +8,11 @@ PDEs for American options, a multithreaded C++ core, exotics and stochastic vola
 calibration to real option chains, and finally the risk of option strategies priced on that
 surface.
 
-I validated every tier of this project with a known reference (textbook value, analytical limit, or a
-slower method that is already trusted).
+Every tier of this project was validated with a [known reference](#references) (textbook value,
+analytical limit, or a slower method that is already trusted).
 
-I documented my full learning process in Notion, reach out privately if you wish to consult it.
+This project is a multi month learning process. I documented my full learning process in Notion,
+reach out privately if you wish to consult it.
 
 > **Status:** Tiers 0 to 6 are built and validated: Black-Scholes with Greeks and
 > implied vol, Monte Carlo with variance reduction, American options by binomial tree and
@@ -20,7 +21,7 @@ I documented my full learning process in Notion, reach out privately if you wish
 > calibration to SPX option chains (implied forwards, SVI, Heston).
 > 378 Python tests (99% branch coverage) and 20 C++ tests, clean under ASan, UBSan and TSan.
 > CI runs the tests, the notebooks and the C++ suite under the sanitizers on every push.
-> Write-up: [docs/REPORT.md](docs/REPORT.md). **Tier 7 (a strategy risk lab and the MCP server) is next.**
+> Write-up: [docs/REPORT.md](docs/REPORT.md). **Tier 7 (a strategy risk lab and the MCP server) is yet to be done.**
 
 **Quickest tour:** the [6 notebooks](notebooks/) (Tiers 1 to 6), the [REPORT](docs/REPORT.md) and the
 [validation table](#validation).
